@@ -577,18 +577,6 @@ html, body {
   background: #000;
 }
 
-/* Overlay sits centered in the same bounds as the original video.
-   Both share the same max-width/height so object-fit:contain aligns them. */
-#overlay-video {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  max-width: calc(100% - 32px);
-  max-height: calc(100% - 32px);
-  object-fit: contain;
-  border-radius: 4px;
-}
 
 .preview-controls {
   display: flex;
@@ -989,3 +977,15 @@ html, body {
   cursor: crosshair;
   min-height: 0;
 }
+
+.job-retry-btn {
+  font-size: 10px;
+  padding: 2px 8px;
+  border: 1px solid var(--sl-color-neutral-300);
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+  color: var(--sl-color-neutral-600);
+  margin-top: 4px;
+}
+.job-retry-btn:hover { background: var(--sl-color-neutral-100); }

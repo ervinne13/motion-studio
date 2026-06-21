@@ -84,13 +84,15 @@ app.patch('/api/project/:id', async (req, res) => {
     const allowed = ['name', 'mode', 'fps', 'aspectRatio', 'defaultPrompt', 'defaultSeed', 'genFps', 'genFramesPerSegment'];
     allowed.forEach(k => { if (req.body[k] !== undefined) project[k] = req.body[k]; });
 
-    // Recompute segment boundaries when generation settings change
+    // Recompute segment boundaries when generation settings change,
+    // but only for clips that already have segments (assets-only clips stay out)
     if (req.body.genFps !== undefined || req.body.genFramesPerSegment !== undefined) {
-      const genFps  = project.genFps  || 8;
+      const genFps  = project.genFps  || 24;
       const genFrms = project.genFramesPerSegment || 81;
-      project.segments = project.sourceClips.flatMap(clip =>
-        computeSegments(clip.id, clip.totalFrames, clip.fps, genFps, genFrms)
-      );
+      const clipsWithSegs = new Set(project.segments.map(s => s.sourceClipId));
+      project.segments = project.sourceClips
+        .filter(clip => clipsWithSegs.has(clip.id))
+        .flatMap(clip => computeSegments(clip.id, clip.totalFrames, clip.fps, genFps, genFrms));
     }
 
     await saveProject(project);
@@ -124,11 +126,7 @@ app.post('/api/project/:id/upload', upload.single('file'), async (req, res) => {
     if (isVideo) {
       const { fps, totalFrames } = await probeVideo(filePath);
       const clipId = `clip-${randomUUID().slice(0, 8)}`;
-
       project.sourceClips.push({ id: clipId, filename: file.originalname, fps, totalFrames });
-      const genFps  = project.genFps  || 8;
-      const genFrms = project.genFramesPerSegment || 81;
-      project.segments.push(...computeSegments(clipId, totalFrames, fps, genFps, genFrms));
       if (project.sourceClips.length === 1) project.fps = fps;
     }
 
@@ -174,6 +172,26 @@ app.get('/api/project/:id/thumbnails', async (req, res) => {
     res.json({ frames });
   } catch (e) {
     console.error('Thumbnail error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Clip: append segments ──────────────────────────────────────
+// Called when a user drags a second video onto the timeline trail.
+// Creates segments for an existing clip and appends them to the project.
+app.post('/api/project/:id/clips/:clipId/segments', async (req, res) => {
+  const { id, clipId } = req.params;
+  try {
+    const project = await loadProject(id);
+    const clip = project.sourceClips.find(c => c.id === clipId);
+    if (!clip) return res.status(404).json({ error: 'Clip not found' });
+    const genFps  = project.genFps  || 24;
+    const genFrms = project.genFramesPerSegment || 81;
+    const newSegs = computeSegments(clipId, clip.totalFrames, clip.fps, genFps, genFrms);
+    project.segments.push(...newSegs);
+    await saveProject(project);
+    res.json({ project });
+  } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
@@ -267,13 +285,55 @@ app.post('/api/project/:id/segments/:segId/split', async (req, res) => {
   }
 });
 
+// ── Segments bulk update ───────────────────────────────────────
+// PATCH /api/project/:id/segments-bulk
+// Body: { updates: [{ id, selected? }] }
+app.patch('/api/project/:id/segments-bulk', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const project = await loadProject(id);
+    const { updates } = req.body;
+    if (!Array.isArray(updates)) return res.status(400).json({ error: 'updates array required' });
+    for (const u of updates) {
+      const seg = project.segments.find(s => s.id === u.id);
+      if (!seg) continue;
+      if (u.selected !== undefined) seg.selected = u.selected;
+    }
+    await saveProject(project);
+    res.json({ project });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/project/:id/segments/:segId/duplicate
+app.post('/api/project/:id/segments/:segId/duplicate', async (req, res) => {
+  const { id, segId } = req.params;
+  try {
+    const project = await loadProject(id);
+    const segIdx = project.segments.findIndex(s => s.id === segId);
+    if (segIdx === -1) return res.status(404).json({ error: 'Segment not found' });
+    const original = project.segments[segIdx];
+    const dupe = {
+      ...original,
+      id: `seg-${randomUUID().slice(0, 8)}`,
+      generatedVideo: null,
+    };
+    project.segments.splice(segIdx + 1, 0, dupe);
+    await saveProject(project);
+    res.json({ project });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Generate (enqueue per segment) ────────────────────────────
 // POST /api/project/:id/generate
-// Body: { clipId, segmentSec, genFps, prompt, seed }
+// Body: { clipId, segmentSec, genFps, prompt, seed, segIds? }
 // Returns { jobs: [...] } — one job per segment, chained via dependsOn
 app.post('/api/project/:id/generate', async (req, res) => {
   const { id } = req.params;
-  const { clipId, prompt = '', seed } = req.body;
+  const { clipId, prompt = '', seed, segIds } = req.body;
 
   try {
     const project = await loadProject(id);
@@ -292,10 +352,13 @@ app.post('/api/project/:id/generate', async (req, res) => {
 
     const resolvedSeed   = seed ?? (project.defaultSeed > 0 ? project.defaultSeed : Math.floor(Math.random() * 2 ** 32));
     const resolvedPrompt = prompt || project.defaultPrompt || '';
-    const genFps         = project.genFps  || 8;
+    const genFps         = project.genFps  || 24;
 
     // Project segments are the canonical segmentation — one job per segment
-    const clipSegs = project.segments.filter(s => s.sourceClipId === clipId);
+    const clipSegs = project.segments.filter(s =>
+      s.sourceClipId === clipId &&
+      (!segIds || segIds.includes(s.id))
+    );
 
     let lastRef   = defaultRef;
     const jobs    = [];

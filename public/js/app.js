@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { timelineSetProject, timelineClearSelection, timelineRedraw, getFrameInfo } from './timeline.js';
-import { playerLoadClip, playerSeek, playerSetGenSegments, playerToggleGenSeg } from './player.js';
+import { playerBuildPlaylist, playerSeek, playerToggleGenSeg } from './player.js';
 
 // Per-segment overlay visibility — read by timeline.js draw to dim hidden segments
 window._hiddenGenSegIds = new Set();
@@ -49,6 +49,12 @@ function applyProject() {
   if (gfpsEl) gfpsEl.value = String(p.genFps ?? 24);
   const gfrmEl = document.getElementById('gen-frames-per-segment');
   if (gfrmEl) gfrmEl.value = String(p.genFramesPerSegment ?? 81);
+  const arEl = document.getElementById('aspect-ratio');
+  if (arEl) arEl.value = p.aspectRatio ?? '9:16';
+  const dpEl = document.getElementById('default-prompt');
+  if (dpEl) dpEl.value = p.defaultPrompt ?? '';
+  const dsEl = document.getElementById('default-seed');
+  if (dsEl) dsEl.value = String(p.defaultSeed ?? -1);
   // Reset flag after Shoelace finishes processing any queued microtasks
   setTimeout(() => { _applyingProject = false; }, 100);
   updateSegDurationHint(p);
@@ -56,8 +62,7 @@ function applyProject() {
   timelineSetProject(p);
   updateGenerateButton();
   if (p.sourceClips.length > 0) {
-    playerLoadClip(p.sourceClips[0], p.id);
-    playerSetGenSegments(p.segments, p.id, p.sourceClips[0].fps);
+    playerBuildPlaylist(p.segments, p.id, p.sourceClips);
   }
   updateExportButton();
 }
@@ -272,7 +277,13 @@ function makeAssetItem(type, name) {
 
   el.addEventListener('dragstart', e => {
     e.dataTransfer.setData('text/plain', name);
-    if (isImage) e.dataTransfer.setData('application/x-ms-asset-image', name);
+    if (isImage) {
+      e.dataTransfer.setData('application/x-ms-asset-image', name);
+    } else {
+      // Include the clip ID so the timeline can dispatch clip:appendsegments
+      const clip = state.project?.sourceClips.find(c => c.filename === name);
+      if (clip) e.dataTransfer.setData('application/x-ms-asset-video', clip.id);
+    }
     e.dataTransfer.effectAllowed = 'copy';
   });
 
@@ -432,6 +443,9 @@ function renderJob(job) {
     ? `<div class="job-progress">${prog.phase ?? ''} ${prog.done ?? 0}/${prog.total ?? '?'}</div>`
     : '';
   const errLine = job.error ? `<div class="job-error">${escHtml(job.error)}</div>` : '';
+  const retryBtn = status === 'failed'
+    ? `<button class="job-retry-btn" data-job-id="${job.id}">↺ Retry</button>`
+    : '';
 
   const projName = job.params?.projectName ? `<span class="job-project">${escHtml(job.params.projectName)}</span>` : '';
   card.innerHTML = `
@@ -439,7 +453,7 @@ function renderJob(job) {
       <span class="job-label">Segment ${seg}${projName ? ' · ' : ''}${projName}</span>
       <span class="job-badge job-badge-${status}">${status}</span>
     </div>
-    ${progLine}${errLine}
+    ${progLine}${errLine}${retryBtn}
   `;
 
   // Pulse dot on logs icon when any job is active
@@ -465,6 +479,28 @@ function watchJob(job) {
   es.onerror = () => es.close();
 }
 
+// Delegated retry handler on logs panel
+document.getElementById('panel-logs').addEventListener('click', async e => {
+  const retryEl = e.target.closest('.job-retry-btn');
+  if (!retryEl) return;
+  const jobId = retryEl.dataset.jobId;
+  const job = _jobs.get(jobId);
+  if (!job) return;
+  const p = state.project;
+  if (!p) return;
+  const segId = job.params?.segId;
+  const clipId = job.params?.clipId;
+  if (!segId || !clipId) return;
+  const res = await fetch(`/api/project/${p.id}/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clipId, segIds: [segId] }),
+  });
+  if (!res.ok) return;
+  const data = await res.json();
+  data.jobs.forEach(watchJob);
+});
+
 async function onJobDone(job) {
   const segId    = job.params?.segId;
   const output   = job.result?.outputPath;
@@ -486,7 +522,7 @@ async function onJobDone(job) {
   state.project = project;
   timelineSetProject(project);
   renderAssetList();
-  if (p.sourceClips.length > 0) playerSetGenSegments(project.segments, project.id, p.sourceClips[0].fps);
+  if (p.sourceClips.length > 0) playerBuildPlaylist(project.segments, project.id, project.sourceClips);
   updateExportButton();
 }
 
@@ -543,6 +579,8 @@ function showJobInPanel(jobId) {
 }
 
 // ── Frame select → right panel ─────────────────────────────────
+let _selectedSegIdForFrame = null;
+
 document.addEventListener('frame:select', async e => {
   const { clipId, frameIndex } = e.detail;
   state.selectedFrame = { clipId, frameIndex };
@@ -557,6 +595,16 @@ document.addEventListener('frame:select', async e => {
   const clip = p?.sourceClips.find(c => c.id === clipId);
   if (!clip) return;
 
+  // Populate per-segment prompt
+  const seg = p?.segments.find(s =>
+    s.sourceClipId === clipId &&
+    frameIndex >= s.startFrame &&
+    frameIndex < s.startFrame + s.frameCount
+  );
+  _selectedSegIdForFrame = seg?.id ?? null;
+  const framePromptEl = document.getElementById('frame-prompt');
+  if (framePromptEl) framePromptEl.value = seg?.prompt ?? '';
+
   const thumb = document.getElementById('frame-thumb');
   thumb.src = '';
   try {
@@ -565,8 +613,22 @@ document.addEventListener('frame:select', async e => {
     if (frames.length) thumb.src = frames[0].url;
   } catch { /* leave blank */ }
 
-  playerLoadClip(clip, p.id);
   playerSeek(frameIndex / clip.fps);
+});
+
+// Save per-segment prompt on blur
+document.getElementById('frame-prompt')?.addEventListener('sl-blur', async e => {
+  const p = state.project;
+  if (!p || !_selectedSegIdForFrame) return;
+  const value = e.target.value?.trim() || null;
+  await fetch(`/api/project/${p.id}/segments/${_selectedSegIdForFrame}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: value }),
+  });
+  // Update local state
+  const seg = p.segments.find(s => s.id === _selectedSegIdForFrame);
+  if (seg) seg.prompt = value;
 });
 
 // ── Panel switching ────────────────────────────────────────────
@@ -636,6 +698,43 @@ document.getElementById('project-name')?.addEventListener('sl-change', async e =
   });
 });
 
+document.getElementById('aspect-ratio')?.addEventListener('sl-change', async e => {
+  if (_applyingProject) return;
+  const p = state.project;
+  if (!p) return;
+  await fetch(`/api/project/${p.id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ aspectRatio: e.target.value }),
+  });
+});
+
+let _defaultPromptDebounce = null;
+document.getElementById('default-prompt')?.addEventListener('sl-input', async e => {
+  if (_applyingProject) return;
+  const p = state.project;
+  if (!p) return;
+  clearTimeout(_defaultPromptDebounce);
+  _defaultPromptDebounce = setTimeout(async () => {
+    await fetch(`/api/project/${p.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ defaultPrompt: e.target.value }),
+    });
+  }, 300);
+});
+
+document.getElementById('default-seed')?.addEventListener('sl-change', async e => {
+  if (_applyingProject) return;
+  const p = state.project;
+  if (!p) return;
+  await fetch(`/api/project/${p.id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ defaultSeed: Number(e.target.value) }),
+  });
+});
+
 // ── Segment delete ─────────────────────────────────────────────
 async function deleteSegment(segId) {
   const p = state.project;
@@ -666,6 +765,21 @@ async function setSegmentRef(segId, filename) {
 
 document.addEventListener('segment:setref', e => setSegmentRef(e.detail.segId, e.detail.filename));
 
+document.addEventListener('segment:toggleselect', async e => {
+  const p = state.project;
+  if (!p) return;
+  const seg = p.segments.find(s => s.id === e.detail.segId);
+  if (!seg) return;
+  seg.selected = !seg.selected;
+  timelineSetProject(p);
+  updateGenerateButton();
+  await fetch(`/api/project/${p.id}/segments/${seg.id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ selected: seg.selected }),
+  });
+});
+
 document.addEventListener('segment:togglegen', e => {
   const { segId } = e.detail;
   if (window._hiddenGenSegIds.has(segId)) {
@@ -674,13 +788,40 @@ document.addEventListener('segment:togglegen', e => {
     window._hiddenGenSegIds.add(segId);
   }
   playerToggleGenSeg(segId);
+  const p = state.project;
+  if (p?.sourceClips.length > 0) playerBuildPlaylist(p.segments, p.id, p.sourceClips);
   timelineRedraw();
+});
+
+document.addEventListener('clip:appendsegments', async e => {
+  const { clipId } = e.detail;
+  const p = state.project;
+  if (!p) return;
+  const res = await fetch(`/api/project/${p.id}/clips/${clipId}/segments`, { method: 'POST' });
+  if (!res.ok) return;
+  const { project } = await res.json();
+  state.project = project;
+  timelineSetProject(project);
+  playerBuildPlaylist(project.segments, project.id, project.sourceClips);
+  updateGenerateButton();
 });
 
 let _selectedSegId = null;
 document.addEventListener('segment:select', e => { _selectedSegId = e.detail.segId; });
 document.getElementById('ctx-delete-seg').addEventListener('click', () => {
   if (_selectedSegId) deleteSegment(_selectedSegId);
+});
+
+document.getElementById('ctx-duplicate-seg')?.addEventListener('click', async () => {
+  if (!_selectedSegId) return;
+  const p = state.project;
+  if (!p) return;
+  const res = await fetch(`/api/project/${p.id}/segments/${_selectedSegId}/duplicate`, { method: 'POST' });
+  if (!res.ok) return;
+  const { project } = await res.json();
+  state.project = project;
+  timelineSetProject(project);
+  updateGenerateButton();
 });
 
 // ── Support image drop zone ────────────────────────────────────
@@ -750,12 +891,21 @@ document.getElementById('btn-split')?.addEventListener('click', async () => {
   }
 });
 
+async function saveSegmentSelections(project) {
+  await fetch(`/api/project/${project.id}/segments-bulk`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ updates: project.segments.map(s => ({ id: s.id, selected: s.selected })) }),
+  });
+}
+
 document.getElementById('btn-select-all')?.addEventListener('click', () => {
   const p = state.project;
   if (!p) return;
   p.segments.forEach(s => { s.selected = true; });
   timelineSetProject(p);
   updateGenerateButton();
+  saveSegmentSelections(p);
 });
 
 document.getElementById('btn-select-none')?.addEventListener('click', () => {
@@ -764,6 +914,7 @@ document.getElementById('btn-select-none')?.addEventListener('click', () => {
   p.segments.forEach(s => { s.selected = false; });
   timelineSetProject(p);
   updateGenerateButton();
+  saveSegmentSelections(p);
 });
 
 document.getElementById('btn-select-ungenerated')?.addEventListener('click', () => {
@@ -772,6 +923,7 @@ document.getElementById('btn-select-ungenerated')?.addEventListener('click', () 
   p.segments.forEach(s => { s.selected = !s.generatedVideo; });
   timelineSetProject(p);
   updateGenerateButton();
+  saveSegmentSelections(p);
 });
 
 // ── Boot ───────────────────────────────────────────────────────

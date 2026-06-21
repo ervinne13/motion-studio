@@ -34,13 +34,11 @@ const rctx        = rulerCanvas.getContext('2d');
 function rowH() { return H / ROW_COUNT; }
 function ppf() {
   if (zoomLevel === 0 && totalTLFrames > 0 && W > 0) {
-    // Cap so no segment exceeds 420px; also ensure all content fits in canvas
+    // Size so the widest segment is ~420px; let the rest scroll
     const maxSegFrames = segLayout.length > 0
       ? Math.max(...segLayout.map(s => s.frameCount))
       : totalTLFrames;
-    const bySegCap = 420 / Math.max(1, maxSegFrames);
-    const byFitAll = Math.max(1, W - TRAIL_PX) / totalTLFrames;
-    return Math.min(bySegCap, byFitAll);
+    return 420 / Math.max(1, maxSegFrames);
   }
   return PX_PER_FRAME[zoomLevel];
 }
@@ -185,10 +183,21 @@ function drawEmpty() {
       ctx.beginPath(); ctx.moveTo(0, (i + 1) * rh); ctx.lineTo(W, (i + 1) * rh); ctx.stroke();
     }
   }
-  ctx.fillStyle = '#9ca3af';
-  ctx.font = '13px system-ui, sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('Import a video to populate the timeline', W / 2, 2.5 * rh);
+  if (dragOverTrail) {
+    ctx.fillStyle = 'rgba(99,102,241,0.10)';
+    ctx.fillRect(16, 8, W - 32, H - 16);
+    ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+    ctx.strokeRect(16, 8, W - 32, H - 16);
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#6366f1'; ctx.font = 'bold 13px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('+ drop to add segments', W / 2, H / 2);
+  } else {
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '13px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Drag a video from the assets panel to add segments', W / 2, 2.5 * rh);
+  }
 }
 
 function drawRowBackgrounds() {
@@ -223,6 +232,25 @@ function drawSegments() {
     ctx.fillStyle = adjustAlpha(SEG_COLORS[idx % SEG_COLORS.length], 0.6);
     ctx.fillRect(x, segY + 1, 2, rh - 2);
 
+    // Checkbox (selected state)
+    const cbX = Math.max(x, 0) + 4;
+    const cbY = segY + (rh - 10) / 2;
+    ctx.lineWidth = 1.5;
+    if (seg.selected !== false) {
+      ctx.fillStyle = '#3b82f6';
+      ctx.strokeStyle = '#3b82f6';
+      ctx.beginPath(); ctx.roundRect(cbX, cbY, 10, 10, 2); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cbX + 2, cbY + 5); ctx.lineTo(cbX + 4, cbY + 7); ctx.lineTo(cbX + 8, cbY + 3);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = '#f9fafb';
+      ctx.strokeStyle = '#d1d5db';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.roundRect(cbX, cbY, 10, 10, 2); ctx.fill(); ctx.stroke();
+    }
+
     // Label (only if there's enough room)
     if (w > 40) {
       ctx.fillStyle = '#374151';
@@ -231,7 +259,7 @@ function drawSegments() {
       ctx.save();
       ctx.rect(Math.max(x, 0), segY, Math.min(w, W - Math.max(x, 0)), rh);
       ctx.clip();
-      ctx.fillText(`seg ${idx + 1}`, Math.max(x, 0) + 8, segY + rh / 2);
+      ctx.fillText(`seg ${idx + 1}`, Math.max(x, 0) + 20, segY + rh / 2);
       ctx.restore();
     }
 
@@ -239,6 +267,12 @@ function drawSegments() {
     if (seg.id === selectedSegId) {
       ctx.strokeStyle = '#1d4ed8'; ctx.lineWidth = 2;
       ctx.strokeRect(x + 1, segY + 1, w - 2, rh - 2);
+    }
+
+    // Dimmed overlay for unselected segments
+    if (seg.selected === false) {
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.fillRect(x, segY + 1, w, rh - 2);
     }
 
     // Right boundary tick
@@ -411,6 +445,34 @@ function drawOverlays() {
       ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, H); ctx.stroke();
     }
   }
+
+  // Trail drop hint
+  if (segLayout.length > 0) {
+    const last   = segLayout[segLayout.length - 1];
+    const trailX = Math.max(0, (last.timelineStart + last.frameCount) * p - scrollX);
+    if (trailX < W - 40) {
+      const boxW = Math.min(140, W - trailX - 12);
+      const hintCx = trailX + 6 + boxW / 2;
+      if (dragOverTrail) {
+        ctx.fillStyle = 'rgba(99,102,241,0.12)';
+        ctx.fillRect(trailX + 6, 4, boxW, H - 8);
+        ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 2;
+        ctx.setLineDash([]);
+        ctx.strokeRect(trailX + 6, 4, boxW, H - 8);
+        ctx.fillStyle = '#6366f1'; ctx.font = 'bold 10px system-ui';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('+ append clip', hintCx, H / 2);
+      } else {
+        ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 1;
+        ctx.setLineDash([5, 4]);
+        ctx.strokeRect(trailX + 6, 4, boxW, H - 8);
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#d1d5db'; ctx.font = '10px system-ui';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('drag video here', hintCx, H / 2);
+      }
+    }
+  }
 }
 
 // ── Playhead from player ───────────────────────────────────────
@@ -455,6 +517,7 @@ let isPanning  = false;
 canvas.addEventListener('mousemove', e => {
   if (isPanning) return;
   if (!project || !segLayout.length) { canvas.style.cursor = 'crosshair'; return; }
+  if (isTrailArea(e.offsetX)) { canvas.style.cursor = 'default'; return; }
   const rh     = rowH();
   const rowIdx = Math.floor(e.offsetY / rh);
   const tlFrame = Math.floor((e.offsetX + scrollX) / ppf());
@@ -515,7 +578,14 @@ canvas.addEventListener('click', e => {
   }
 
   if (rowIdx === 2) {
-    // Segs row — select / deselect segment
+    // Segs row — check if click is on the checkbox hit area
+    const segX = seg.timelineStart * ppf() - scrollX;
+    const cbHitX = Math.max(segX, 0) + 4;
+    if (e.offsetX >= cbHitX && e.offsetX <= cbHitX + 18) {
+      document.dispatchEvent(new CustomEvent('segment:toggleselect', { detail: { segId: seg.id } }));
+      return;
+    }
+    // Otherwise select / deselect segment
     selectedSegId = selectedSegId === seg.id ? null : seg.id;
     draw();
     document.dispatchEvent(new CustomEvent('segment:select', { detail: { segId: selectedSegId } }));
@@ -566,8 +636,9 @@ document.addEventListener('keydown', e => {
   }
 });
 
-// ── Refs row drag-drop ─────────────────────────────────────────
-let dragOverSegId = null;
+// ── Refs row / trail drag-drop ─────────────────────────────────
+let dragOverSegId  = null;
+let dragOverTrail  = false;
 
 function segAtX(offsetX) {
   const tlFrame = Math.floor((offsetX + scrollX) / ppf());
@@ -578,15 +649,30 @@ function isRefsRow(offsetY) {
   return offsetY >= rowH() && offsetY < rowH() * 2;
 }
 
+function isTrailArea(offsetX) {
+  if (!segLayout.length) return true;
+  const last = segLayout[segLayout.length - 1];
+  return offsetX + scrollX >= (last.timelineStart + last.frameCount) * ppf();
+}
+
 // getData() is blocked during dragover by browsers — only .types is readable.
 // We store the asset type as a MIME-style key so we can filter without getData().
 const IMAGE_DRAG_TYPE = 'application/x-ms-asset-image'; // present only for image assets
+const VIDEO_DRAG_TYPE = 'application/x-ms-asset-video'; // present only for video assets
 
 canvas.addEventListener('dragover', e => {
-  if (!isRefsRow(e.offsetY)) return;
-  const isImage = e.dataTransfer.types.includes(IMAGE_DRAG_TYPE) ||
-                  e.dataTransfer.types.includes('text/plain');
-  if (!isImage) return;
+  const isVideo = e.dataTransfer.types.includes(VIDEO_DRAG_TYPE);
+  const isImage = !isVideo && (e.dataTransfer.types.includes(IMAGE_DRAG_TYPE) ||
+                               e.dataTransfer.types.includes('text/plain'));
+
+  if (isVideo && isTrailArea(e.offsetX)) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    if (!dragOverTrail) { dragOverTrail = true; draw(); }
+    return;
+  }
+
+  if (!isRefsRow(e.offsetY) || !isImage) return;
   e.preventDefault();
   e.dataTransfer.dropEffect = 'copy';
   const seg = segAtX(e.offsetX);
@@ -596,22 +682,40 @@ canvas.addEventListener('dragover', e => {
   }
 });
 
-canvas.addEventListener('dragleave', () => {
-  if (dragOverSegId) { dragOverSegId = null; draw(); }
+canvas.addEventListener('dragleave', e => {
+  let changed = false;
+  if (dragOverSegId)  { dragOverSegId = null; changed = true; }
+  if (dragOverTrail)  { dragOverTrail = false; changed = true; }
+  if (changed) draw();
 });
 
 canvas.addEventListener('drop', e => {
   e.preventDefault();
+  const wasTrail = dragOverTrail;
   dragOverSegId = null;
+  dragOverTrail = false;
   draw();
-  if (!isRefsRow(e.offsetY)) return;
+
   const filename = e.dataTransfer.getData('text/plain');
   if (!filename) return;
-  // Reject videos by extension
-  if (/\.(mp4|mov|avi|webm|mkv)$/i.test(filename)) return;
-  const seg = segAtX(e.offsetX);
-  if (!seg) return;
-  document.dispatchEvent(new CustomEvent('segment:setref', { detail: { segId: seg.id, filename } }));
+
+  const isVideo = /\.(mp4|mov|avi|webm|mkv)$/i.test(filename);
+
+  // Video dropped on trail → append segments for that clip
+  if (isVideo && wasTrail) {
+    const clipId = e.dataTransfer.getData(VIDEO_DRAG_TYPE) || null;
+    if (clipId) {
+      document.dispatchEvent(new CustomEvent('clip:appendsegments', { detail: { clipId } }));
+    }
+    return;
+  }
+
+  // Image dropped on a Refs-row segment
+  if (!isVideo && isRefsRow(e.offsetY)) {
+    const seg = segAtX(e.offsetX);
+    if (!seg) return;
+    document.dispatchEvent(new CustomEvent('segment:setref', { detail: { segId: seg.id, filename } }));
+  }
 });
 
 // ── Thumbnail lazy loading ─────────────────────────────────────

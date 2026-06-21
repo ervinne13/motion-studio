@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Motion Studio</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.19.1/cdn/themes/light.css" />
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.19.1/cdn/shoelace-autoloader.js"></script>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <div class="app">
+
+    <!-- ── Header ──────────────────────────────────────────── -->
+    <header class="app-header">
+      <div class="header-brand">
+        <svg class="brand-icon" viewBox="0 0 20 20" fill="currentColor">
+          <path d="M2 6a2 2 0 012-2h12a2 2 0 012 2v1H2V6zm0 3h16v5a2 2 0 01-2 2H4a2 2 0 01-2-2V9zm4 2a1 1 0 000 2h8a1 1 0 000-2H6z"/>
+        </svg>
+        <span class="brand-name">Motion Studio</span>
+        <span class="project-divider">·</span>
+        <div class="header-project-area">
+          <input type="text" id="header-project-name" class="project-name-input" value="untitled" spellcheck="false">
+          <button class="project-switch-btn" id="btn-project-switch" title="Switch project">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+          </button>
+
+          <!-- Project switcher panel -->
+          <div id="project-switcher" class="project-switcher" hidden>
+            <div class="switcher-header">
+              <span class="switcher-title">Projects</span>
+              <button class="tool-btn" id="btn-new-project" style="padding:3px 10px;font-size:12px">+ New</button>
+            </div>
+            <div class="project-grid" id="project-grid">
+              <div class="project-grid-empty">Loading…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <sl-button variant="default" size="small" id="btn-export" disabled>Export ↓</sl-button>
+        <sl-button variant="primary" size="small" id="btn-generate" disabled>
+          Generate 0 →
+        </sl-button>
+      </div>
+    </header>
+
+    <!-- ── Main workspace ────────────────────────────────────── -->
+    <div class="workspace">
+
+      <!-- Icon rail -->
+      <nav class="icon-rail">
+        <button class="rail-btn active" data-panel="assets" title="Assets">
+          <svg viewBox="0 0 20 20" fill="currentColor"><path d="M2 6a2 2 0 012-2h12a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zm2 0v8h12V6H4zm2 2h8v4H6V8z"/></svg>
+        </button>
+        <button class="rail-btn" data-panel="logs" title="Generation Logs">
+          <svg viewBox="0 0 20 20" fill="currentColor"><path d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 0v12h8V4H6zm1 3h6v1H7V7zm0 3h6v1H7v-1zm0 3h4v1H7v-1z"/></svg>
+          <span class="pulse-dot" id="logs-pulse" hidden></span>
+        </button>
+        <button class="rail-btn" data-panel="settings" title="Settings">
+          <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/></svg>
+        </button>
+      </nav>
+
+      <!-- Left expanding panel -->
+      <aside class="left-panel">
+
+        <!-- Assets -->
+        <div class="panel-content active" id="panel-assets">
+          <div class="panel-header">Media</div>
+          <div class="import-zone" id="import-zone">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+            <span>Drop media here</span>
+            <button class="import-btn" id="btn-import">+ Import</button>
+            <input type="file" id="file-input" multiple accept="video/*,image/*" hidden>
+          </div>
+
+          <div class="asset-section">
+            <div class="section-label-row">
+              <div class="section-label">Uploads</div>
+              <div class="view-toggle">
+                <button class="view-btn active" id="btn-view-list" title="List view">
+                  <svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 4h12v1.5H2zm0 3h12v1.5H2zm0 3h12v1.5H2z"/></svg>
+                </button>
+                <button class="view-btn" id="btn-view-grid" title="Grid view">
+                  <svg viewBox="0 0 16 16" fill="currentColor"><path d="M1 1h6v6H1zm8 0h6v6H9zM1 9h6v6H1zm8 0h6v6H9z"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="asset-list" id="uploads-list">
+              <div class="empty-assets">No uploads yet</div>
+            </div>
+          </div>
+
+          <div class="asset-section">
+            <div class="section-label">Generated <span class="sparkle">✦</span></div>
+            <div class="asset-list" id="generated-list">
+              <div class="empty-assets">No generated assets</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Generation Logs -->
+        <div class="panel-content" id="panel-logs">
+          <div class="panel-header">
+            <span>Generation Logs</span>
+            <button class="sort-btn" id="btn-sort-logs" title="Sort: newest first" data-asc="false">
+              <svg viewBox="0 0 20 20" fill="currentColor"><path d="M3 3a1 1 0 000 2h11a1 1 0 100-2H3zm0 4a1 1 0 000 2h7a1 1 0 100-2H3zm0 4a1 1 0 100 2h4a1 1 0 100-2H3zm12-1.586V14a1 1 0 01-2 0V9.414l-.293.293a1 1 0 01-1.414-1.414l2-2a1 1 0 011.414 0l2 2a1 1 0 01-1.414 1.414L15 9.414z"/></svg>
+            </button>
+          </div>
+          <div class="logs-empty">
+            <svg viewBox="0 0 20 20" fill="currentColor" style="width:32px;height:32px;color:var(--sl-color-neutral-300)"><path d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 0v12h8V4H6zm1 3h6v1H7V7zm0 3h6v1H7v-1zm0 3h4v1H7v-1z"/></svg>
+            <p>No generation runs yet</p>
+          </div>
+        </div>
+
+        <!-- Settings -->
+        <div class="panel-content" id="panel-settings">
+          <div class="panel-header">Settings</div>
+          <div class="settings-form">
+            <sl-input label="Project Name" id="project-name" value="untitled" size="small"></sl-input>
+            <sl-select label="Generation Mode" id="gen-mode" value="subject-replacement" size="small">
+              <sl-option value="subject-replacement">Subject Replacement</sl-option>
+              <sl-option value="motion-capture">Motion Capture</sl-option>
+            </sl-select>
+            <sl-select label="Gen FPS" id="gen-fps" value="24" size="small">
+              <sl-option value="8">8 fps</sl-option>
+              <sl-option value="12">12 fps</sl-option>
+              <sl-option value="16">16 fps</sl-option>
+              <sl-option value="24">24 fps</sl-option>
+            </sl-select>
+            <sl-select label="Aspect Ratio" id="aspect-ratio" value="9:16" size="small">
+              <sl-optgroup label="Portrait">
+                <sl-option value="2:3">2:3</sl-option>
+                <sl-option value="3:4">3:4</sl-option>
+                <sl-option value="9:16">9:16</sl-option>
+                <sl-option value="1:1">1:1</sl-option>
+              </sl-optgroup>
+              <sl-optgroup label="Landscape">
+                <sl-option value="3:2">3:2</sl-option>
+                <sl-option value="4:3">4:3</sl-option>
+                <sl-option value="16:9">16:9</sl-option>
+              </sl-optgroup>
+            </sl-select>
+            <sl-select label="Frames per Segment" id="gen-frames-per-segment" value="81" size="small">
+              <sl-option value="49">49 frames</sl-option>
+              <sl-option value="81">81 frames</sl-option>
+              <sl-option value="121">121 frames</sl-option>
+              <span slot="help-text" id="seg-duration-hint">Segments are resized on change</span>
+            </sl-select>
+            <sl-textarea label="Default Prompt" id="default-prompt" rows="3" size="small"
+              placeholder="Fallback prompt for all segments…"></sl-textarea>
+            <sl-input label="Default Seed" id="default-seed" value="-1" type="number" size="small">
+              <span slot="help-text">-1 = random</span>
+            </sl-input>
+          </div>
+        </div>
+
+      </aside>
+
+      <!-- Center — video preview -->
+      <main class="preview-panel">
+        <div class="preview-area" id="preview-area">
+          <div class="preview-placeholder" id="preview-placeholder">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="width:56px;height:56px;color:var(--sl-color-neutral-300)"><circle cx="12" cy="12" r="10"/><polygon points="10,8 16,12 10,16" fill="currentColor" stroke="none"/></svg>
+            <p>No preview — import a video to begin</p>
+          </div>
+          <video id="preview-video" hidden playsinline></video>
+          <video id="overlay-video" hidden playsinline></video>
+        </div>
+        <div class="preview-controls">
+          <span class="timecode" id="timecode">00:00:00:00 / 00:00:00:00</span>
+          <div class="preview-buttons">
+            <button class="tool-btn" id="btn-mute" disabled title="Mute / Unmute">
+              <svg id="icon-sound" viewBox="0 0 20 20" fill="currentColor" style="width:14px;height:14px"><path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clip-rule="evenodd"/></svg>
+              <svg id="icon-muted" viewBox="0 0 20 20" fill="currentColor" style="width:14px;height:14px;display:none"><path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM12.293 7.293a1 1 0 011.414 0L15 8.586l1.293-1.293a1 1 0 111.414 1.414L16.414 10l1.293 1.293a1 1 0 01-1.414 1.414L15 11.414l-1.293 1.293a1 1 0 01-1.414-1.414L13.586 10l-1.293-1.293a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+            </button>
+            <sl-button size="small" variant="default" id="btn-play-preview" disabled>
+              ▶ Play Preview
+            </sl-button>
+          </div>
+        </div>
+      </main>
+
+      <!-- Right — frame properties / asset viewer -->
+      <aside class="right-panel">
+        <div class="panel-header" id="right-panel-title">Properties</div>
+
+        <!-- Job detail viewer -->
+        <div id="job-props" hidden>
+          <div class="two-col-detail">
+            <div class="detail-col-info">
+              <div class="asset-props-details" id="job-props-details"></div>
+            </div>
+            <div class="detail-col-img">
+              <div class="asset-props-img-wrap">
+                <img id="job-props-ref-img" src="" alt="Reference image">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Asset image viewer -->
+        <div id="asset-props" hidden>
+          <div class="asset-props-img-wrap">
+            <img id="asset-props-img" src="" alt="">
+          </div>
+          <div class="asset-props-details" id="asset-props-details"></div>
+        </div>
+
+        <div class="frame-props-empty" id="frame-props-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:40px;height:40px;color:var(--sl-color-neutral-300)"><path stroke-linecap="round" stroke-linejoin="round" d="M15.042 21.672L13.684 16.6m0 0l-2.51 2.225.569-9.47 5.227 7.917-3.286-.672zM12 2.25V4.5m5.834.166l-1.591 1.591M20.25 10.5H18M7.757 14.743l-1.59 1.59M6 10.5H3.75m4.007-4.243l-1.59-1.59"/></svg>
+          <p>Click a frame in the timeline to edit</p>
+        </div>
+
+        <div class="frame-props-content" id="frame-props-content" hidden>
+          <div class="two-col-detail">
+            <div class="detail-col-info">
+              <sl-button variant="warning" size="small" id="btn-pin-ref" outline style="width:100%">
+                ★ Pin as ref
+              </sl-button>
+              <div class="field-group">
+                <div class="field-label">Support image <span class="field-hint">(optional)</span></div>
+                <div class="support-drop-zone" id="support-drop-zone">
+                  <svg viewBox="0 0 20 20" fill="currentColor" style="width:18px;height:18px;flex-shrink:0"><path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd"/></svg>
+                  <span>Drop image or drag from assets</span>
+                </div>
+              </div>
+              <sl-textarea id="frame-prompt" label="Prompt" rows="4" size="small"
+                placeholder="Describe the change for this frame…"></sl-textarea>
+              <sl-button variant="primary" size="small" id="btn-apply-qwen" style="width:100%">
+                Apply with Qwen →
+              </sl-button>
+              <div class="field-group" id="frame-history" hidden>
+                <div class="field-label">History</div>
+                <div class="history-strip" id="history-strip"></div>
+              </div>
+            </div>
+            <div class="detail-col-img">
+              <div class="frame-thumb-wrap" id="frame-thumb-wrap">
+                <img id="frame-thumb" src="" alt="Selected frame">
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+    </div><!-- /workspace -->
+
+    <!-- ── Timeline ───────────────────────────────────────────── -->
+    <div class="timeline-section">
+      <div class="timeline-toolbar">
+        <sl-tooltip content="Split at cursor">
+          <button class="tool-btn" id="btn-split" title="Split">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M4 4a1 1 0 000 2h5v8H4a1 1 0 000 2h5v1a1 1 0 002 0v-1h5a1 1 0 000-2h-5V6h5a1 1 0 000-2h-5V3a1 1 0 00-2 0v1H4z"/></svg>
+            Split
+          </button>
+        </sl-tooltip>
+        <div class="toolbar-sep"></div>
+        <button class="tool-btn" id="btn-select-all">☑ All</button>
+        <button class="tool-btn" id="btn-select-none">☐ None</button>
+        <button class="tool-btn" id="btn-select-ungenerated">☑ Ungenerated</button>
+        <div class="toolbar-spacer"></div>
+        <select class="view-select" id="zoom-select">
+          <option value="0">Segment view</option>
+          <option value="2">Frame view</option>
+        </select>
+      </div>
+
+      <div class="timeline-canvas-wrap">
+        <div class="timeline-row-labels">
+          <div class="row-label row-label-ruler"></div>
+          <div class="row-label">Gen</div>
+          <div class="row-label">Refs</div>
+          <div class="row-label">Segs</div>
+          <div class="row-label">Frames</div>
+        </div>
+        <div class="timeline-right">
+          <canvas id="timeline-ruler"></canvas>
+          <canvas id="timeline-canvas"></canvas>
+        </div>
+      </div>
+    </div>
+
+  <!-- Segment context menu -->
+  <div id="seg-context-menu" class="context-menu" hidden>
+    <button class="ctx-item" id="ctx-delete-seg">
+      <svg viewBox="0 0 20 20" fill="currentColor" style="width:14px;height:14px;flex-shrink:0"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+      Delete segment
+    </button>
+  </div>
+
+  </div><!-- /app -->
+
+  <script type="module" src="/js/player.js"></script>
+  <script type="module" src="/js/timeline.js"></script>
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,1236 @@
+{
+  "201": {
+    "inputs": {
+      "value": 30
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "FPS"
+    }
+  },
+  "202": {
+    "inputs": {
+      "text": ""
+    },
+    "class_type": "Text Multiline",
+    "_meta": {
+      "title": "Positive Prompt"
+    }
+  },
+  "207": {
+    "inputs": {
+      "frame_rate": [
+        "201",
+        0
+      ],
+      "loop_count": 0,
+      "filename_prefix": "video/20260620/SCAIL2-Test",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": false,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "209:8",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "208": {
+    "inputs": {
+      "seed": 463180804392728
+    },
+    "class_type": "Seed (rgthree)",
+    "_meta": {
+      "title": "Seed (rgthree)"
+    }
+  },
+  "210": {
+    "inputs": {
+      "video": "Shela Andriani - Dancing.mp4",
+      "force_rate": [
+        "201",
+        0
+      ],
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": [
+        "228",
+        0
+      ],
+      "skip_first_frames": [
+        "229",
+        0
+      ],
+      "select_every_nth": 1,
+      "format": "None"
+    },
+    "class_type": "VHS_LoadVideo",
+    "_meta": {
+      "title": "Motion Reference Video"
+    }
+  },
+  "211": {
+    "inputs": {
+      "image": "pasted/image (69).png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Base Image"
+    }
+  },
+  "225": {
+    "inputs": {
+      "file": "SCAIL2_00001_.mp4",
+      "video-preview": ""
+    },
+    "class_type": "LoadVideo",
+    "_meta": {
+      "title": "Previous Video Generated"
+    }
+  },
+  "228": {
+    "inputs": {
+      "value": 157
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Frame Count"
+    }
+  },
+  "229": {
+    "inputs": {
+      "value": 157
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Start Frame"
+    }
+  },
+  "198:174": {
+    "inputs": {
+      "resize_type": "scale total pixels",
+      "resize_type.megapixels": 0.5,
+      "scale_method": "nearest-exact"
+    },
+    "class_type": "ResizeImageMaskNode",
+    "_meta": {
+      "title": "Resize Image/Mask"
+    }
+  },
+  "198:176": {
+    "inputs": {
+      "unet_name": "wan2.1_14B_SCAIL_2_fp8_scaled.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "198:177": {
+    "inputs": {
+      "lora_name": "Wan2.1/Wan21_I2V_14B_lightx2v_cfg_step_distill_lora_rank64.safetensors",
+      "strength_model": 1,
+      "model": [
+        "198:176",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  },
+  "198:178": {
+    "inputs": {
+      "shift": 5,
+      "model": [
+        "198:177",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+      "title": "ModelSamplingSD3"
+    }
+  },
+  "198:179": {
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "198:180": {
+    "inputs": {
+      "seed": 123,
+      "steps": 6,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "198:178",
+        0
+      ],
+      "positive": [
+        "198:189",
+        0
+      ],
+      "negative": [
+        "198:189",
+        1
+      ],
+      "latent_image": [
+        "198:189",
+        2
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "198:181": {
+    "inputs": {
+      "detection_threshold": 0.5,
+      "max_objects": 0,
+      "detect_interval": 1,
+      "model": [
+        "198:185",
+        0
+      ],
+      "conditioning": [
+        "198:184",
+        0
+      ]
+    },
+    "class_type": "SAM3_VideoTrack",
+    "_meta": {
+      "title": "SAM3 Video Track"
+    }
+  },
+  "198:182": {
+    "inputs": {
+      "detection_threshold": 0.5,
+      "max_objects": 0,
+      "detect_interval": 1,
+      "images": [
+        "198:194",
+        0
+      ],
+      "model": [
+        "198:185",
+        0
+      ],
+      "conditioning": [
+        "198:183",
+        0
+      ]
+    },
+    "class_type": "SAM3_VideoTrack",
+    "_meta": {
+      "title": "SAM3 Video Track"
+    }
+  },
+  "198:183": {
+    "inputs": {
+      "text": "human",
+      "clip": [
+        "198:185",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "198:184": {
+    "inputs": {
+      "text": "human",
+      "clip": [
+        "198:185",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "198:185": {
+    "inputs": {
+      "ckpt_name": "sam3.1_multiplex_fp16.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint"
+    }
+  },
+  "198:186": {
+    "inputs": {
+      "object_indices": "",
+      "sort_by": "area",
+      "replacement_mode": false,
+      "driving_track_data": [
+        "198:181",
+        0
+      ],
+      "ref_track_data": [
+        "198:182",
+        0
+      ]
+    },
+    "class_type": "SCAIL2ColoredMask",
+    "_meta": {
+      "title": "Create SCAIL-2 Colored Mask"
+    }
+  },
+  "198:187": {
+    "inputs": {
+      "samples": [
+        "198:180",
+        0
+      ],
+      "vae": [
+        "198:193",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "198:188": {
+    "inputs": {
+      "text": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走 ",
+      "clip": [
+        "198:179",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative Prompt)"
+    }
+  },
+  "198:189": {
+    "inputs": {
+      "width": [
+        "198:197",
+        0
+      ],
+      "height": [
+        "198:197",
+        1
+      ],
+      "length": 81,
+      "batch_size": 1,
+      "pose_strength": 0.99,
+      "pose_start": 0,
+      "pose_end": 1,
+      "video_frame_offset": 0,
+      "previous_frame_count": 5,
+      "replacement_mode": false,
+      "positive": [
+        "198:190",
+        0
+      ],
+      "negative": [
+        "198:188",
+        0
+      ],
+      "vae": [
+        "198:193",
+        0
+      ],
+      "pose_video_mask": [
+        "198:186",
+        0
+      ],
+      "reference_image": [
+        "198:194",
+        0
+      ],
+      "reference_image_mask": [
+        "198:186",
+        1
+      ],
+      "clip_vision_output": [
+        "198:192",
+        0
+      ]
+    },
+    "class_type": "WanSCAILToVideo",
+    "_meta": {
+      "title": "WanSCAILToVideo"
+    }
+  },
+  "198:190": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "198:179",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "198:191": {
+    "inputs": {
+      "clip_name": "clip_vision_h.safetensors"
+    },
+    "class_type": "CLIPVisionLoader",
+    "_meta": {
+      "title": "Load CLIP Vision"
+    }
+  },
+  "198:192": {
+    "inputs": {
+      "crop": "none",
+      "clip_vision": [
+        "198:191",
+        0
+      ],
+      "image": [
+        "198:194",
+        0
+      ]
+    },
+    "class_type": "CLIPVisionEncode",
+    "_meta": {
+      "title": "CLIP Vision Encode"
+    }
+  },
+  "198:193": {
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "198:194": {
+    "inputs": {
+      "resize_type": "scale to multiple",
+      "resize_type.multiple": 32,
+      "scale_method": "nearest-exact",
+      "input": [
+        "198:174",
+        0
+      ]
+    },
+    "class_type": "ResizeImageMaskNode",
+    "_meta": {
+      "title": "Resize Image/Mask"
+    }
+  },
+  "198:195": {
+    "inputs": {
+      "images": [
+        "198:186",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "198:196": {
+    "inputs": {
+      "images": [
+        "198:186",
+        1
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "198:197": {
+    "inputs": {
+      "image": [
+        "198:194",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "Get Image Size"
+    }
+  },
+  "227:220:162": {
+    "inputs": {
+      "video": [
+        "225",
+        0
+      ]
+    },
+    "class_type": "GetVideoComponents",
+    "_meta": {
+      "title": "Get Video Components"
+    }
+  },
+  "227:220:163": {
+    "inputs": {
+      "image": [
+        "227:220:162",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "Get Image Size"
+    }
+  },
+  "227:220:164": {
+    "inputs": {
+      "batch_index": [
+        "227:220:165",
+        1
+      ],
+      "length": 1,
+      "image": [
+        "227:220:162",
+        0
+      ]
+    },
+    "class_type": "ImageFromBatch",
+    "_meta": {
+      "title": "Get Image from Batch"
+    }
+  },
+  "227:220:165": {
+    "inputs": {
+      "expression": "min(max(int(a if a >= 0 else b + a), 0), b - 1)",
+      "values.a": [
+        "227:220:166",
+        0
+      ],
+      "values.b": [
+        "227:220:163",
+        2
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math Expression"
+    }
+  },
+  "227:220:166": {
+    "inputs": {
+      "value": -5
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Int"
+    }
+  },
+  "227:221:153": {
+    "inputs": {
+      "video": [
+        "225",
+        0
+      ]
+    },
+    "class_type": "GetVideoComponents",
+    "_meta": {
+      "title": "Get Video Components"
+    }
+  },
+  "227:221:154": {
+    "inputs": {
+      "image": [
+        "227:221:153",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "Get Image Size"
+    }
+  },
+  "227:221:155": {
+    "inputs": {
+      "batch_index": [
+        "227:221:156",
+        1
+      ],
+      "length": 1,
+      "image": [
+        "227:221:153",
+        0
+      ]
+    },
+    "class_type": "ImageFromBatch",
+    "_meta": {
+      "title": "Get Image from Batch"
+    }
+  },
+  "227:221:156": {
+    "inputs": {
+      "expression": "min(max(int(a if a >= 0 else b + a), 0), b - 1)",
+      "values.a": [
+        "227:221:157",
+        0
+      ],
+      "values.b": [
+        "227:221:154",
+        2
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math Expression"
+    }
+  },
+  "227:221:157": {
+    "inputs": {
+      "value": -4
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Int"
+    }
+  },
+  "227:222:146": {
+    "inputs": {
+      "video": [
+        "225",
+        0
+      ]
+    },
+    "class_type": "GetVideoComponents",
+    "_meta": {
+      "title": "Get Video Components"
+    }
+  },
+  "227:222:147": {
+    "inputs": {
+      "image": [
+        "227:222:146",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "Get Image Size"
+    }
+  },
+  "227:222:148": {
+    "inputs": {
+      "batch_index": [
+        "227:222:149",
+        1
+      ],
+      "length": 1,
+      "image": [
+        "227:222:146",
+        0
+      ]
+    },
+    "class_type": "ImageFromBatch",
+    "_meta": {
+      "title": "Get Image from Batch"
+    }
+  },
+  "227:222:149": {
+    "inputs": {
+      "expression": "min(max(int(a if a >= 0 else b + a), 0), b - 1)",
+      "values.a": [
+        "227:222:150",
+        0
+      ],
+      "values.b": [
+        "227:222:147",
+        2
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math Expression"
+    }
+  },
+  "227:222:150": {
+    "inputs": {
+      "value": -3
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Int"
+    }
+  },
+  "227:223:139": {
+    "inputs": {
+      "video": [
+        "225",
+        0
+      ]
+    },
+    "class_type": "GetVideoComponents",
+    "_meta": {
+      "title": "Get Video Components"
+    }
+  },
+  "227:223:140": {
+    "inputs": {
+      "image": [
+        "227:223:139",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "Get Image Size"
+    }
+  },
+  "227:223:141": {
+    "inputs": {
+      "batch_index": [
+        "227:223:142",
+        1
+      ],
+      "length": 1,
+      "image": [
+        "227:223:139",
+        0
+      ]
+    },
+    "class_type": "ImageFromBatch",
+    "_meta": {
+      "title": "Get Image from Batch"
+    }
+  },
+  "227:223:142": {
+    "inputs": {
+      "expression": "min(max(int(a if a >= 0 else b + a), 0), b - 1)",
+      "values.a": [
+        "227:223:143",
+        0
+      ],
+      "values.b": [
+        "227:223:140",
+        2
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math Expression"
+    }
+  },
+  "227:223:143": {
+    "inputs": {
+      "value": -2
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Int"
+    }
+  },
+  "227:224:2": {
+    "inputs": {
+      "video": [
+        "225",
+        0
+      ]
+    },
+    "class_type": "GetVideoComponents",
+    "_meta": {
+      "title": "Get Video Components"
+    }
+  },
+  "227:224:219": {
+    "inputs": {
+      "image": [
+        "227:224:2",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "Get Image Size"
+    }
+  },
+  "227:224:4": {
+    "inputs": {
+      "batch_index": [
+        "227:224:99",
+        1
+      ],
+      "length": 1,
+      "image": [
+        "227:224:2",
+        0
+      ]
+    },
+    "class_type": "ImageFromBatch",
+    "_meta": {
+      "title": "Get Image from Batch"
+    }
+  },
+  "227:224:99": {
+    "inputs": {
+      "expression": "min(max(int(a if a >= 0 else b + a), 0), b - 1)",
+      "values.a": [
+        "227:224:100",
+        0
+      ],
+      "values.b": [
+        "227:224:219",
+        2
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math Expression"
+    }
+  },
+  "227:224:100": {
+    "inputs": {
+      "value": -1
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Int"
+    }
+  },
+  "227:226": {
+    "inputs": {
+      "inputcount": 5,
+      "Update inputs": null,
+      "image_1": [
+        "227:220:164",
+        0
+      ],
+      "image_2": [
+        "227:221:155",
+        0
+      ],
+      "image_3": [
+        "227:222:148",
+        0
+      ],
+      "image_4": [
+        "227:223:141",
+        0
+      ],
+      "image_5": [
+        "227:224:4",
+        0
+      ]
+    },
+    "class_type": "ImageBatchMulti",
+    "_meta": {
+      "title": "Image Batch Multi"
+    }
+  },
+  "209:102": {
+    "inputs": {
+      "resize_type": "scale total pixels",
+      "resize_type.megapixels": 0.5,
+      "scale_method": "nearest-exact",
+      "input": [
+        "211",
+        0
+      ]
+    },
+    "class_type": "ResizeImageMaskNode",
+    "_meta": {
+      "title": "Resize Image/Mask"
+    }
+  },
+  "209:37": {
+    "inputs": {
+      "unet_name": "wan2.1_14B_SCAIL_2_fp8_scaled.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "209:96": {
+    "inputs": {
+      "lora_name": "Wan2.1/Wan21_I2V_14B_lightx2v_cfg_step_distill_lora_rank64.safetensors",
+      "strength_model": 1,
+      "model": [
+        "209:37",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  },
+  "209:48": {
+    "inputs": {
+      "shift": 5,
+      "model": [
+        "209:96",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+      "title": "ModelSamplingSD3"
+    }
+  },
+  "209:38": {
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "209:3": {
+    "inputs": {
+      "seed": [
+        "208",
+        0
+      ],
+      "steps": 6,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "209:48",
+        0
+      ],
+      "positive": [
+        "209:101",
+        0
+      ],
+      "negative": [
+        "209:101",
+        1
+      ],
+      "latent_image": [
+        "209:101",
+        2
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "209:112": {
+    "inputs": {
+      "detection_threshold": 0.5,
+      "max_objects": 0,
+      "detect_interval": 1,
+      "images": [
+        "210",
+        0
+      ],
+      "model": [
+        "209:110",
+        0
+      ],
+      "conditioning": [
+        "209:109",
+        0
+      ]
+    },
+    "class_type": "SAM3_VideoTrack",
+    "_meta": {
+      "title": "SAM3 Video Track"
+    }
+  },
+  "209:116": {
+    "inputs": {
+      "detection_threshold": 0.5,
+      "max_objects": 0,
+      "detect_interval": 1,
+      "images": [
+        "209:103",
+        0
+      ],
+      "model": [
+        "209:110",
+        0
+      ],
+      "conditioning": [
+        "209:115",
+        0
+      ]
+    },
+    "class_type": "SAM3_VideoTrack",
+    "_meta": {
+      "title": "SAM3 Video Track"
+    }
+  },
+  "209:115": {
+    "inputs": {
+      "text": "human",
+      "clip": [
+        "209:110",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "209:109": {
+    "inputs": {
+      "text": "human",
+      "clip": [
+        "209:110",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "209:110": {
+    "inputs": {
+      "ckpt_name": "sam3.1_multiplex_fp16.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint"
+    }
+  },
+  "209:107": {
+    "inputs": {
+      "object_indices": "",
+      "sort_by": "area",
+      "replacement_mode": true,
+      "driving_track_data": [
+        "209:112",
+        0
+      ],
+      "ref_track_data": [
+        "209:116",
+        0
+      ]
+    },
+    "class_type": "SCAIL2ColoredMask",
+    "_meta": {
+      "title": "Create SCAIL-2 Colored Mask"
+    }
+  },
+  "209:8": {
+    "inputs": {
+      "samples": [
+        "209:3",
+        0
+      ],
+      "vae": [
+        "209:39",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "209:7": {
+    "inputs": {
+      "text": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走 ",
+      "clip": [
+        "209:38",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative Prompt)"
+    }
+  },
+  "209:6": {
+    "inputs": {
+      "text": [
+        "202",
+        0
+      ],
+      "clip": [
+        "209:38",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "209:57": {
+    "inputs": {
+      "clip_name": "clip_vision_h.safetensors"
+    },
+    "class_type": "CLIPVisionLoader",
+    "_meta": {
+      "title": "Load CLIP Vision"
+    }
+  },
+  "209:56": {
+    "inputs": {
+      "crop": "none",
+      "clip_vision": [
+        "209:57",
+        0
+      ],
+      "image": [
+        "209:103",
+        0
+      ]
+    },
+    "class_type": "CLIPVisionEncode",
+    "_meta": {
+      "title": "CLIP Vision Encode"
+    }
+  },
+  "209:39": {
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "209:103": {
+    "inputs": {
+      "resize_type": "scale to multiple",
+      "resize_type.multiple": 32,
+      "scale_method": "nearest-exact",
+      "input": [
+        "209:102",
+        0
+      ]
+    },
+    "class_type": "ResizeImageMaskNode",
+    "_meta": {
+      "title": "Resize Image/Mask"
+    }
+  },
+  "209:118": {
+    "inputs": {
+      "images": [
+        "209:107",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "209:117": {
+    "inputs": {
+      "images": [
+        "209:107",
+        1
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "209:104": {
+    "inputs": {
+      "image": [
+        "209:103",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "Get Image Size"
+    }
+  },
+  "209:101": {
+    "inputs": {
+      "width": [
+        "209:104",
+        0
+      ],
+      "height": [
+        "209:104",
+        1
+      ],
+      "length": [
+        "228",
+        0
+      ],
+      "batch_size": 1,
+      "pose_strength": 0.99,
+      "pose_start": 0,
+      "pose_end": 1,
+      "video_frame_offset": 0,
+      "previous_frame_count": 5,
+      "replacement_mode": true,
+      "positive": [
+        "209:6",
+        0
+      ],
+      "negative": [
+        "209:7",
+        0
+      ],
+      "vae": [
+        "209:39",
+        0
+      ],
+      "pose_video": [
+        "210",
+        0
+      ],
+      "pose_video_mask": [
+        "209:107",
+        0
+      ],
+      "reference_image": [
+        "209:103",
+        0
+      ],
+      "reference_image_mask": [
+        "209:107",
+        1
+      ],
+      "clip_vision_output": [
+        "209:56",
+        0
+      ],
+      "previous_frames": [
+        "227:226",
+        0
+      ]
+    },
+    "class_type": "WanSCAILToVideo",
+    "_meta": {
+      "title": "WanSCAILToVideo"
+    }
+  }
+}

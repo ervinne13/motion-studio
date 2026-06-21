@@ -1,0 +1,492 @@
+{
+  "49": {
+    "inputs": {
+      "frame_rate": [
+        "135",
+        0
+      ],
+      "loop_count": 0,
+      "filename_prefix": "video/20260620/SCAIL2-Test",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": false,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "138:8",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "58": {
+    "inputs": {
+      "image": "pasted/image (68).png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Base Image"
+    }
+  },
+  "113": {
+    "inputs": {
+      "video": "7571604-uhd_2160_4096_25fps.mp4",
+      "force_rate": [
+        "135",
+        0
+      ],
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": [
+        "140",
+        0
+      ],
+      "skip_first_frames": [
+        "141",
+        0
+      ],
+      "select_every_nth": 1,
+      "format": "None"
+    },
+    "class_type": "VHS_LoadVideo",
+    "_meta": {
+      "title": "Motion Reference Video"
+    }
+  },
+  "135": {
+    "inputs": {
+      "value": 16
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "FPS"
+    }
+  },
+  "137": {
+    "inputs": {
+      "text": ""
+    },
+    "class_type": "Text Multiline",
+    "_meta": {
+      "title": "Positive Prompt"
+    }
+  },
+  "139": {
+    "inputs": {
+      "seed": 463180804392728
+    },
+    "class_type": "Seed (rgthree)",
+    "_meta": {
+      "title": "Seed (rgthree)"
+    }
+  },
+  "140": {
+    "inputs": {
+      "value": 81
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Frame Count"
+    }
+  },
+  "141": {
+    "inputs": {
+      "value": 0
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Start Frame"
+    }
+  },
+  "138:102": {
+    "inputs": {
+      "resize_type": "scale total pixels",
+      "resize_type.megapixels": 0.5,
+      "scale_method": "nearest-exact",
+      "input": [
+        "58",
+        0
+      ]
+    },
+    "class_type": "ResizeImageMaskNode",
+    "_meta": {
+      "title": "Resize Image/Mask"
+    }
+  },
+  "138:37": {
+    "inputs": {
+      "unet_name": "wan2.1_14B_SCAIL_2_fp8_scaled.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "138:96": {
+    "inputs": {
+      "lora_name": "Wan2.1/Wan21_I2V_14B_lightx2v_cfg_step_distill_lora_rank64.safetensors",
+      "strength_model": 1,
+      "model": [
+        "138:37",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  },
+  "138:48": {
+    "inputs": {
+      "shift": 5,
+      "model": [
+        "138:96",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+      "title": "ModelSamplingSD3"
+    }
+  },
+  "138:38": {
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "138:3": {
+    "inputs": {
+      "seed": [
+        "139",
+        0
+      ],
+      "steps": 6,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "138:48",
+        0
+      ],
+      "positive": [
+        "138:101",
+        0
+      ],
+      "negative": [
+        "138:101",
+        1
+      ],
+      "latent_image": [
+        "138:101",
+        2
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "138:112": {
+    "inputs": {
+      "detection_threshold": 0.5,
+      "max_objects": 0,
+      "detect_interval": 1,
+      "images": [
+        "113",
+        0
+      ],
+      "model": [
+        "138:110",
+        0
+      ],
+      "conditioning": [
+        "138:109",
+        0
+      ]
+    },
+    "class_type": "SAM3_VideoTrack",
+    "_meta": {
+      "title": "SAM3 Video Track"
+    }
+  },
+  "138:116": {
+    "inputs": {
+      "detection_threshold": 0.5,
+      "max_objects": 0,
+      "detect_interval": 1,
+      "images": [
+        "138:103",
+        0
+      ],
+      "model": [
+        "138:110",
+        0
+      ],
+      "conditioning": [
+        "138:115",
+        0
+      ]
+    },
+    "class_type": "SAM3_VideoTrack",
+    "_meta": {
+      "title": "SAM3 Video Track"
+    }
+  },
+  "138:115": {
+    "inputs": {
+      "text": "human",
+      "clip": [
+        "138:110",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "138:109": {
+    "inputs": {
+      "text": "human",
+      "clip": [
+        "138:110",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "138:110": {
+    "inputs": {
+      "ckpt_name": "sam3.1_multiplex_fp16.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint"
+    }
+  },
+  "138:107": {
+    "inputs": {
+      "object_indices": "",
+      "sort_by": "area",
+      "replacement_mode": false,
+      "driving_track_data": [
+        "138:112",
+        0
+      ],
+      "ref_track_data": [
+        "138:116",
+        0
+      ]
+    },
+    "class_type": "SCAIL2ColoredMask",
+    "_meta": {
+      "title": "Create SCAIL-2 Colored Mask"
+    }
+  },
+  "138:8": {
+    "inputs": {
+      "samples": [
+        "138:3",
+        0
+      ],
+      "vae": [
+        "138:39",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "138:7": {
+    "inputs": {
+      "text": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走 ",
+      "clip": [
+        "138:38",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative Prompt)"
+    }
+  },
+  "138:101": {
+    "inputs": {
+      "width": [
+        "138:104",
+        0
+      ],
+      "height": [
+        "138:104",
+        1
+      ],
+      "length": [
+        "140",
+        0
+      ],
+      "batch_size": 1,
+      "pose_strength": 0.99,
+      "pose_start": 0,
+      "pose_end": 1,
+      "video_frame_offset": 0,
+      "previous_frame_count": 5,
+      "replacement_mode": false,
+      "positive": [
+        "138:6",
+        0
+      ],
+      "negative": [
+        "138:7",
+        0
+      ],
+      "vae": [
+        "138:39",
+        0
+      ],
+      "pose_video": [
+        "113",
+        0
+      ],
+      "pose_video_mask": [
+        "138:107",
+        0
+      ],
+      "reference_image": [
+        "138:103",
+        0
+      ],
+      "reference_image_mask": [
+        "138:107",
+        1
+      ],
+      "clip_vision_output": [
+        "138:56",
+        0
+      ]
+    },
+    "class_type": "WanSCAILToVideo",
+    "_meta": {
+      "title": "WanSCAILToVideo"
+    }
+  },
+  "138:6": {
+    "inputs": {
+      "text": [
+        "137",
+        0
+      ],
+      "clip": [
+        "138:38",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "138:57": {
+    "inputs": {
+      "clip_name": "clip_vision_h.safetensors"
+    },
+    "class_type": "CLIPVisionLoader",
+    "_meta": {
+      "title": "Load CLIP Vision"
+    }
+  },
+  "138:56": {
+    "inputs": {
+      "crop": "none",
+      "clip_vision": [
+        "138:57",
+        0
+      ],
+      "image": [
+        "138:103",
+        0
+      ]
+    },
+    "class_type": "CLIPVisionEncode",
+    "_meta": {
+      "title": "CLIP Vision Encode"
+    }
+  },
+  "138:39": {
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "138:103": {
+    "inputs": {
+      "resize_type": "scale to multiple",
+      "resize_type.multiple": 32,
+      "scale_method": "nearest-exact",
+      "input": [
+        "138:102",
+        0
+      ]
+    },
+    "class_type": "ResizeImageMaskNode",
+    "_meta": {
+      "title": "Resize Image/Mask"
+    }
+  },
+  "138:118": {
+    "inputs": {
+      "images": [
+        "138:107",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "138:117": {
+    "inputs": {
+      "images": [
+        "138:107",
+        1
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "138:104": {
+    "inputs": {
+      "image": [
+        "138:103",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "Get Image Size"
+    }
+  }
+}

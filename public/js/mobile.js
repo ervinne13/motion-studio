@@ -39,7 +39,6 @@ function renderForm() {
   document.getElementById('view').innerHTML = '';
   document.getElementById('view').appendChild(node);
 
-  // Advanced toggle
   const btnAdv   = document.getElementById('btn-advanced');
   const advPanel = document.getElementById('advanced-panel');
   btnAdv.addEventListener('click', () => {
@@ -194,7 +193,6 @@ async function onGenerate() {
     const genData = await genRes.json();
     if (!genRes.ok) throw new Error(genData.error || 'Generation failed');
 
-    // Navigate to the project detail view
     const doneId = _projectId;
     _projectId = null; _videoFile = null; _imageFile = null;
     location.hash = `#project/${doneId}`;
@@ -217,7 +215,11 @@ async function renderProjects() {
       return;
     }
 
-    const items = projects.map(p => {
+    const sorted = [...projects].sort((a, b) =>
+      (a.name || 'untitled').localeCompare(b.name || 'untitled')
+    );
+
+    const items = sorted.map(p => {
       const sub = p.segmentCount
         ? `${p.segmentCount} segment${p.segmentCount !== 1 ? 's' : ''}`
         : 'No segments';
@@ -246,17 +248,19 @@ async function renderProjectDetail(id) {
 }
 
 async function fetchAndPaintDetail(id) {
-  const [projRes, jobsRes] = await Promise.all([
+  const [projRes, jobsRes, exportsRes] = await Promise.all([
     fetch(`/api/project/${id}`),
     fetch('/api/jobs'),
+    fetch(`/api/project/${id}/exports`).catch(() => null),
   ]);
   if (!projRes.ok) { setView('<div class="mobile-empty">Project not found.</div>'); return; }
 
-  const project  = await projRes.json();
-  const { jobs } = await jobsRes.json();
-  const projJobs = jobs.filter(j => j.params?.projectId === id);
+  const project     = await projRes.json();
+  const { jobs }    = await jobsRes.json();
+  const exportFiles = (exportsRes?.ok ? (await exportsRes.json()).exports : null) ?? [];
+  const projJobs    = jobs.filter(j => j.params?.projectId === id && j.params?.jobType !== 'qwen-edit');
 
-  paintProjectDetail(id, project, projJobs);
+  paintProjectDetail(id, project, projJobs, exportFiles);
 
   const hasActive = projJobs.some(j => ['pending','waiting','running'].includes(j.status));
   if (hasActive && !_detailTimer) {
@@ -267,10 +271,10 @@ async function fetchAndPaintDetail(id) {
   }
 }
 
-function paintProjectDetail(id, project, jobs) {
-  const assets = project.generatedAssets ?? [];
+function paintProjectDetail(id, project, jobs, exportFiles) {
+  const latestExport = exportFiles[0] ?? null;
 
-  // Latest asset per segmentIndex
+  const assets = project.generatedAssets ?? [];
   const latestAsset = new Map();
   assets.forEach(a => {
     const cur = latestAsset.get(a.segmentIndex);
@@ -280,52 +284,76 @@ function paintProjectDetail(id, project, jobs) {
   const allSegIndices = [...new Set([
     ...jobs.map(j => j.params?.segmentIndex ?? 0),
     ...latestAsset.keys(),
+    ...(project.segments?.map((_, i) => i) ?? []),
   ])].sort((a, b) => a - b);
 
-  const cards = allSegIndices.map(segIdx => {
-    const asset = latestAsset.get(segIdx);
-    // Most recent job for this segment
-    const job   = [...jobs].reverse().find(j => (j.params?.segmentIndex ?? 0) === segIdx);
-    const status = job?.status ?? (asset ? 'done' : 'unknown');
+  // ── Accordion segments ────────────────────────────────────────
+  let accordionHtml = '';
+  if (allSegIndices.length === 0) {
+    accordionHtml = '<div class="seg-status-idle">No segments yet.</div>';
+  } else {
+    accordionHtml = allSegIndices.map(segIdx => {
+      const asset  = latestAsset.get(segIdx);
+      const job    = [...jobs].reverse().find(j => (j.params?.segmentIndex ?? 0) === segIdx);
+      const status = job?.status ?? (asset ? 'done' : 'unknown');
 
-    let mediaSrc = '';
-    if (asset) {
-      mediaSrc = `<video class="seg-video" src="/media/${id}/generated/${encodeURIComponent(asset.filename)}" autoplay muted loop playsinline controls></video>`;
-    } else if (status === 'running') {
-      mediaSrc = `<div class="seg-status-pulse">Generating…</div>`;
-    } else if (status === 'waiting') {
-      mediaSrc = `<div class="seg-status-idle seg-status-waiting">Up next — ComfyUI busy</div>`;
-    } else if (status === 'pending') {
-      mediaSrc = `<div class="seg-status-idle">Pending in queue…</div>`;
-    } else if (status === 'failed') {
-      mediaSrc = `<div class="seg-status-idle" style="color:#b91c1c">Generation failed</div>`;
-    }
+      let bodyHtml = '';
+      if (asset) {
+        bodyHtml = `<video class="seg-video" src="/media/${id}/generated/${encodeURIComponent(asset.filename)}" muted playsinline controls></video>`;
+      } else if (status === 'running') {
+        bodyHtml = `<div class="seg-status-pulse">Generating…</div>`;
+      } else if (status === 'waiting') {
+        bodyHtml = `<div class="seg-status-idle seg-status-waiting">Up next — ComfyUI busy</div>`;
+      } else if (status === 'pending') {
+        bodyHtml = `<div class="seg-status-idle">Pending in queue…</div>`;
+      } else if (status === 'failed') {
+        bodyHtml = `<div class="seg-status-idle" style="color:#b91c1c">Generation failed</div>`;
+      } else {
+        bodyHtml = `<div class="seg-status-idle">Not generated yet</div>`;
+      }
 
-    const badgeHtml = status === 'done' || asset
-      ? `<span class="mbadge mbadge-done">Done</span>`
-      : status === 'running'
-      ? `<span class="mbadge mbadge-running">Running</span>`
-      : status === 'waiting'
-      ? `<span class="mbadge mbadge-waiting">Waiting</span>`
-      : status === 'pending'
-      ? `<span class="mbadge mbadge-pending">Pending</span>`
-      : status === 'failed'
-      ? `<span class="mbadge mbadge-failed">Failed</span>`
-      : '';
+      const badgeHtml = (status === 'done' || asset)
+        ? `<span class="mbadge mbadge-done">Done</span>`
+        : status === 'running'  ? `<span class="mbadge mbadge-running">Running</span>`
+        : status === 'waiting'  ? `<span class="mbadge mbadge-waiting">Waiting</span>`
+        : status === 'pending'  ? `<span class="mbadge mbadge-pending">Pending</span>`
+        : status === 'failed'   ? `<span class="mbadge mbadge-failed">Failed</span>`
+        : '';
 
-    return `
-      <div class="seg-card">
-        <div class="seg-card-header">
-          <span>Segment ${segIdx + 1}</span>
-          ${badgeHtml}
-        </div>
-        ${mediaSrc}
+      return `
+        <div class="acc-item" data-seg-idx="${segIdx}">
+          <button class="acc-header" type="button">
+            <span class="acc-title">Segment ${segIdx + 1}</span>
+            ${badgeHtml}
+            <span class="acc-chevron">›</span>
+          </button>
+          <div class="acc-body">${bodyHtml}</div>
+        </div>`;
+    }).join('');
+  }
+
+  // ── Hero / render section ────────────────────────────────────
+  let heroHtml = '';
+  if (latestExport) {
+    heroHtml = `
+      <div class="export-hero">
+        <video class="export-video" src="/media/${id}/generated/${encodeURIComponent(latestExport)}"
+          autoplay muted loop playsinline controls></video>
+        <div class="export-label">Rendered output</div>
       </div>`;
-  }).join('');
-
-  const noCards = allSegIndices.length === 0
-    ? '<div class="seg-status-idle">No segments yet.</div>'
-    : '';
+  } else {
+    const hasGenerated = project.segments?.some(s => s.generatedVideo) || latestAsset.size > 0;
+    heroHtml = `
+      <div class="render-section" id="render-section">
+        <label class="render-audio-label">
+          <input type="checkbox" id="chk-render-audio">
+          Include original audio
+        </label>
+        <button class="btn-render" id="btn-render" ${!hasGenerated ? 'disabled' : ''}>
+          Render video
+        </button>
+      </div>`;
+  }
 
   setView(`
     <div class="proj-detail">
@@ -333,7 +361,65 @@ function paintProjectDetail(id, project, jobs) {
         <a href="#projects" class="proj-back">← Projects</a>
         <span class="proj-detail-name">${esc(project.name || 'untitled')}</span>
       </div>
-      ${cards}${noCards}
+      ${heroHtml}
+      ${allSegIndices.length > 0 ? '<div class="acc-section-label">Segments</div>' : ''}
+      <div class="acc-list">${accordionHtml}</div>
     </div>
   `);
+
+  // ── Wire accordion ────────────────────────────────────────────
+  document.querySelectorAll('.acc-item').forEach(item => {
+    item.querySelector('.acc-header').addEventListener('click', () => {
+      const isOpen = item.classList.contains('open');
+      // Close all, pause all videos
+      document.querySelectorAll('.acc-item.open').forEach(other => {
+        other.classList.remove('open');
+        other.querySelector('video')?.pause();
+      });
+      if (!isOpen) {
+        item.classList.add('open');
+        const vid = item.querySelector('video');
+        if (vid) vid.play().catch(() => {});
+      }
+    });
+  });
+
+  // ── Wire render button ────────────────────────────────────────
+  document.getElementById('btn-render')?.addEventListener('click', async () => {
+    const includeAudio = document.getElementById('chk-render-audio')?.checked ?? false;
+    const btnRender    = document.getElementById('btn-render');
+    btnRender.disabled = true;
+    btnRender.textContent = 'Rendering…';
+
+    // Insert pulsing placeholder above render section, scroll to top
+    const renderSection = document.getElementById('render-section');
+    const placeholder = document.createElement('div');
+    placeholder.className = 'export-hero';
+    placeholder.id = 'export-placeholder';
+    placeholder.innerHTML = `<div class="export-placeholder"><div class="seg-status-pulse">Rendering video…</div></div>`;
+    renderSection.parentElement.insertBefore(placeholder, renderSection);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    try {
+      const res = await fetch(`/api/project/${id}/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ includeAudio }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Export failed');
+
+      placeholder.innerHTML = `
+        <video class="export-video" src="${data.path}" autoplay muted loop playsinline controls></video>
+        <div class="export-label">Rendered output</div>`;
+
+      btnRender.textContent = 'Render again';
+      btnRender.disabled = false;
+    } catch (e) {
+      placeholder.remove();
+      alert('Render failed: ' + e.message);
+      btnRender.textContent = 'Render video';
+      btnRender.disabled = false;
+    }
+  });
 }

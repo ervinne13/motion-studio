@@ -549,6 +549,23 @@ app.post('/api/project/:id/export', async (req, res) => {
   }
 });
 
+// ── List export files for a project ───────────────────────────
+app.get('/api/project/:id/exports', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { readdir } = await import('fs/promises');
+    const genDir = join(projectDir(id), 'generated');
+    let files;
+    try { files = await readdir(genDir); } catch { files = []; }
+    const exports = files
+      .filter(f => f.startsWith('export_') && f.endsWith('.mp4') && !f.includes('_concat'))
+      .sort().reverse();
+    res.json({ exports });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Jobs list (today) ──────────────────────────────────────────
 app.get('/api/jobs', async (_req, res) => {
   try {

@@ -128,16 +128,48 @@ select:focus, input:focus { outline: 2px solid var(--brand); outline-offset: 1px
 .proj-back { color: var(--brand); font-size: 14px; text-decoration: none; flex-shrink: 0; }
 .proj-detail-name { font-size: 17px; font-weight: 600; }
 
-/* ── Segment cards ── */
-.seg-card {
+/* ── Export hero ── */
+.export-hero { border-radius: var(--radius); overflow: hidden; background: #000; }
+.export-video { width: 100%; display: block; max-height: 72vh; object-fit: contain; }
+.export-label { font-size: 12px; color: var(--muted); padding: 8px 12px 10px; text-align: center; background: #000; }
+.export-placeholder { min-height: 220px; display: flex; align-items: center; justify-content: center; }
+
+/* ── Render section ── */
+.render-section { display: flex; flex-direction: column; gap: 10px; }
+.render-audio-label {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 14px; cursor: pointer; padding: 4px 2px;
+}
+.render-audio-label input[type=checkbox] { width: 17px; height: 17px; cursor: pointer; accent-color: var(--brand); flex-shrink: 0; }
+.btn-render {
+  background: var(--brand); color: #fff;
+  border: none; border-radius: var(--radius);
+  padding: 14px 20px; font-size: 15px; font-weight: 600;
+  cursor: pointer; width: 100%; transition: opacity .15s;
+}
+.btn-render:disabled { opacity: .45; cursor: not-allowed; }
+.btn-render:not(:disabled):active { opacity: .85; }
+
+/* ── Accordion ── */
+.acc-section-label {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--muted); padding: 4px 2px 0;
+}
+.acc-list { display: flex; flex-direction: column; gap: 8px; }
+.acc-item {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); overflow: hidden;
 }
-.seg-card-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 14px; font-size: 14px; font-weight: 600;
-  border-bottom: 1px solid var(--border);
+.acc-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 14px; width: 100%; background: none; border: none;
+  cursor: pointer; color: var(--text); text-align: left;
 }
+.acc-title { font-size: 14px; font-weight: 600; flex: 1; }
+.acc-chevron { font-size: 20px; color: var(--muted); transition: transform .2s; line-height: 1; flex-shrink: 0; }
+.acc-item.open .acc-chevron { transform: rotate(90deg); }
+.acc-body { display: none; border-top: 1px solid var(--border); }
+.acc-item.open .acc-body { display: block; }
 .seg-video { width: 100%; display: block; }
 .seg-status-pulse {
   padding: 28px 16px; text-align: center;

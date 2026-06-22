@@ -14,7 +14,7 @@ import {
   createProject, loadProject, saveProject,
   computeSegments, uploadsDir, thumbsDir, projectDir,
 } from './lib/project.js';
-import { enqueue, getJob, getTodayJobs, subscribeJob, cancelJob, resumeOnStartup } from './lib/queue.js';
+import { enqueue, getJob, getTodayJobs, subscribeJob, subscribeAll, cancelJob, resumeOnStartup } from './lib/queue.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app  = express();
@@ -23,6 +23,7 @@ const DATA_DIR = process.env.DATA_DIR || './data';
 
 app.use(express.json());
 app.use(express.static(join(__dirname, 'public')));
+app.use('/shoelace', express.static(join(__dirname, 'node_modules/@shoelace-style/shoelace/dist')));
 
 // Serve uploaded videos + thumbnails under /media/:projectId/...
 app.use('/media/:projectId', (req, res, next) => {
@@ -435,6 +436,7 @@ app.post('/api/project/:id/generate', async (req, res) => {
         startFrame:             genStartFrame,
         prompt:                 resolvedPrompt,
         seed:                   resolvedSeed,
+        mode:                   project.mode || 'subject-replacement',
         outputPath,
         jobPrefix:              `motion-studio/${batchId}_seg${segmentIndex + 1}`,
         clipFps:                clip.fps,
@@ -517,6 +519,25 @@ app.get('/api/jobs/:jobId', async (req, res) => {
   res.json({ job });
 });
 
+// SSE global stream — one connection covers all job updates
+app.get('/api/jobs/stream', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const send = job => res.write(`data: ${JSON.stringify(job)}\n\n`);
+
+  // Send current state of all non-terminal jobs immediately
+  try {
+    const jobs = await getTodayJobs();
+    jobs.filter(j => !['done', 'failed', 'cancelled'].includes(j.status)).forEach(send);
+  } catch { /* ignore */ }
+
+  const unsub = subscribeAll(send);
+  req.on('close', unsub);
+});
+
 // SSE stream for a specific job — sends updates until done/failed
 app.get('/api/jobs/:jobId/stream', async (req, res) => {
   const { jobId } = req.params;
@@ -559,6 +580,8 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 // ── Client-side routes (serve HTML shells) ─────────────────────
 app.get('/projects/:id', (_req, res) =>
   res.sendFile(join(__dirname, 'public', 'index.html')));
+app.get('/mobile',       (_req, res) =>
+  res.sendFile(join(__dirname, 'public', 'mobile.html')));
 app.get('/logs',         (_req, res) =>
   res.sendFile(join(__dirname, 'public', 'logs.html')));
 app.get('/logs/:jobId',  (_req, res) =>

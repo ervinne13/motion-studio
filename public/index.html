@@ -4,10 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Motion Studio</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.19.1/cdn/themes/light.css" />
-  <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.19.1/cdn/shoelace-autoloader.js"></script>
+  <link rel="stylesheet" href="/shoelace/themes/light.css">
   <link rel="stylesheet" href="/css/app.css">
-  <script>if (window.innerWidth < 768) location.replace('/logs');</script>
+  <script src="/js/redirect.js"></script>
 </head>
 <body>
   <div class="app">
@@ -39,10 +38,8 @@
         </div>
       </div>
       <div class="header-actions">
-        <sl-button variant="default" size="small" id="btn-export" disabled>Export ↓</sl-button>
-        <sl-button variant="primary" size="small" id="btn-generate" disabled>
-          Generate 0 →
-        </sl-button>
+        <button class="btn" id="btn-export" disabled>Export ↓</button>
+        <button class="btn btn-primary" id="btn-generate" disabled>Generate 0 →</button>
       </div>
     </header>
 
@@ -119,41 +116,58 @@
         <div class="panel-content" id="panel-settings">
           <div class="panel-header">Settings</div>
           <div class="settings-form">
-            <sl-input label="Project Name" id="project-name" value="untitled" size="small"></sl-input>
-            <sl-select label="Generation Mode" id="gen-mode" value="subject-replacement" size="small">
-              <sl-option value="subject-replacement">Subject Replacement</sl-option>
-              <sl-option value="motion-capture">Motion Capture</sl-option>
-            </sl-select>
-            <sl-select label="Gen FPS" id="gen-fps" value="24" size="small">
-              <sl-option value="8">8 fps</sl-option>
-              <sl-option value="12">12 fps</sl-option>
-              <sl-option value="16">16 fps</sl-option>
-              <sl-option value="24">24 fps</sl-option>
-            </sl-select>
-            <sl-select label="Aspect Ratio" id="aspect-ratio" value="9:16" size="small">
-              <sl-optgroup label="Portrait">
-                <sl-option value="2:3">2:3</sl-option>
-                <sl-option value="3:4">3:4</sl-option>
-                <sl-option value="9:16">9:16</sl-option>
-                <sl-option value="1:1">1:1</sl-option>
-              </sl-optgroup>
-              <sl-optgroup label="Landscape">
-                <sl-option value="3:2">3:2</sl-option>
-                <sl-option value="4:3">4:3</sl-option>
-                <sl-option value="16:9">16:9</sl-option>
-              </sl-optgroup>
-            </sl-select>
-            <sl-select label="Frames per Segment" id="gen-frames-per-segment" value="81" size="small">
-              <sl-option value="49">49 frames</sl-option>
-              <sl-option value="81">81 frames</sl-option>
-              <sl-option value="121">121 frames</sl-option>
-              <span slot="help-text" id="seg-duration-hint">Segments are resized on change</span>
-            </sl-select>
-            <sl-textarea label="Default Prompt" id="default-prompt" rows="3" size="small"
-              placeholder="Fallback prompt for all segments…"></sl-textarea>
-            <sl-input label="Default Seed" id="default-seed" value="-1" type="number" size="small">
-              <span slot="help-text">-1 = random</span>
-            </sl-input>
+            <div class="field-group">
+              <label for="project-name">Project Name</label>
+              <input class="form-control" id="project-name" value="untitled">
+            </div>
+            <div class="field-group">
+              <label for="gen-mode">Generation Mode</label>
+              <select class="form-control" id="gen-mode">
+                <option value="subject-replacement">Subject Replacement</option>
+                <option value="motion-capture">Motion Capture</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <label for="gen-fps">Gen FPS</label>
+              <select class="form-control" id="gen-fps">
+                <option value="8">8 fps</option>
+                <option value="12">12 fps</option>
+                <option value="16">16 fps</option>
+                <option value="24" selected>24 fps</option>
+              </select>
+            </div>
+            <!-- Hidden for now because we don't have a way to edit video placement anyway (yet) -->
+            <div class="field-group" hidden>
+              <label for="aspect-ratio">Aspect Ratio</label>
+              <select class="form-control" id="aspect-ratio">
+                <option value="2:3">2:3 Portrait</option>
+                <option value="3:4">3:4 Portrait</option>
+                <option value="9:16" selected>9:16 Portrait</option>
+                <option value="1:1">1:1 Square</option>
+                <option value="3:2">3:2 Landscape</option>
+                <option value="4:3">4:3 Landscape</option>
+                <option value="16:9">16:9 Landscape</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <label for="gen-frames-per-segment">Frames per Segment</label>
+              <select class="form-control" id="gen-frames-per-segment">
+                <option value="49">49 frames</option>
+                <option value="81" selected>81 frames</option>
+                <option value="121">121 frames</option>
+              </select>
+              <small class="field-hint-text" id="seg-duration-hint">81 frames ÷ 24fps = ~3.4s per segment</small>
+            </div>
+            <div class="field-group">
+              <label for="default-prompt">Default Prompt</label>
+              <textarea class="form-control" id="default-prompt" rows="3"
+                placeholder="Fallback prompt for all segments…"></textarea>
+            </div>
+            <div class="field-group">
+              <label for="default-seed">Default Seed</label>
+              <input class="form-control" id="default-seed" value="-1" type="number">
+              <small class="field-hint-text">-1 = random</small>
+            </div>
           </div>
         </div>
 
@@ -177,9 +191,7 @@
               <svg id="icon-sound" viewBox="0 0 20 20" fill="currentColor" style="width:14px;height:14px"><path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clip-rule="evenodd"/></svg>
               <svg id="icon-muted" viewBox="0 0 20 20" fill="currentColor" style="width:14px;height:14px;display:none"><path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM12.293 7.293a1 1 0 011.414 0L15 8.586l1.293-1.293a1 1 0 111.414 1.414L16.414 10l1.293 1.293a1 1 0 01-1.414 1.414L15 11.414l-1.293 1.293a1 1 0 01-1.414-1.414L13.586 10l-1.293-1.293a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
             </button>
-            <sl-button size="small" variant="default" id="btn-play-preview" disabled>
-              ▶ Play Preview
-            </sl-button>
+            <button class="btn" id="btn-play-preview" disabled>▶ Play Preview</button>
           </div>
         </div>
       </main>
@@ -195,8 +207,17 @@
               <div class="asset-props-details" id="job-props-details"></div>
             </div>
             <div class="detail-col-img">
-              <div class="asset-props-img-wrap">
-                <img id="job-props-ref-img" src="" alt="Reference image">
+              <div class="media-tabs" id="job-media-tabs">
+                <button class="media-tab active" data-tab="ref">Ref Img</button>
+                <button class="media-tab" data-tab="gen">Gen Video</button>
+              </div>
+              <div id="job-media-ref" class="media-tab-panel">
+                <div class="asset-props-img-wrap">
+                  <img id="job-props-ref-img" src="" alt="Reference image">
+                </div>
+              </div>
+              <div id="job-media-gen" class="media-tab-panel" hidden>
+                <div id="job-props-gen-content"></div>
               </div>
             </div>
           </div>
@@ -218,9 +239,7 @@
         <div class="frame-props-content" id="frame-props-content" hidden>
           <div class="two-col-detail">
             <div class="detail-col-info">
-              <sl-button variant="warning" size="small" id="btn-pin-ref" outline style="width:100%">
-                ★ Pin as ref
-              </sl-button>
+              <button class="btn btn-warning-outline" id="btn-pin-ref" style="width:100%">★ Pin as ref</button>
               <div class="field-group">
                 <div class="field-label">Support image <span class="field-hint">(optional)</span></div>
                 <div class="support-drop-zone" id="support-drop-zone">
@@ -228,11 +247,12 @@
                   <span>Drop image or drag from assets</span>
                 </div>
               </div>
-              <sl-textarea id="frame-prompt" label="Prompt" rows="4" size="small"
-                placeholder="Describe the change for this frame…"></sl-textarea>
-              <sl-button variant="primary" size="small" id="btn-apply-qwen" style="width:100%">
-                Apply with Qwen →
-              </sl-button>
+              <div class="field-group">
+                <label for="frame-prompt">Prompt</label>
+                <textarea class="form-control" id="frame-prompt" rows="4"
+                  placeholder="Describe the change for this frame…"></textarea>
+              </div>
+              <button class="btn btn-primary" id="btn-apply-qwen" style="width:100%">Apply with Qwen →</button>
               <div class="field-group" id="frame-history" hidden>
                 <div class="field-label">History</div>
                 <div class="history-strip" id="history-strip"></div>
@@ -252,12 +272,10 @@
     <!-- ── Timeline ───────────────────────────────────────────── -->
     <div class="timeline-section">
       <div class="timeline-toolbar">
-        <sl-tooltip content="Split at cursor">
-          <button class="tool-btn" id="btn-split" title="Split">
-            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M4 4a1 1 0 000 2h5v8H4a1 1 0 000 2h5v1a1 1 0 002 0v-1h5a1 1 0 000-2h-5V6h5a1 1 0 000-2h-5V3a1 1 0 00-2 0v1H4z"/></svg>
-            Split
-          </button>
-        </sl-tooltip>
+        <button class="tool-btn" id="btn-split" title="Split at cursor">
+          <svg viewBox="0 0 20 20" fill="currentColor"><path d="M4 4a1 1 0 000 2h5v8H4a1 1 0 000 2h5v1a1 1 0 002 0v-1h5a1 1 0 000-2h-5V6h5a1 1 0 000-2h-5V3a1 1 0 00-2 0v1H4z"/></svg>
+          Split
+        </button>
         <div class="toolbar-sep"></div>
         <button class="tool-btn" id="btn-select-all">☑ All</button>
         <button class="tool-btn" id="btn-select-none">☐ None</button>
@@ -309,7 +327,7 @@
       </label>
       <div class="modal-actions">
         <button class="modal-btn-cancel" id="btn-export-cancel">Cancel</button>
-        <sl-button variant="primary" size="small" id="btn-export-confirm">Export</sl-button>
+        <button class="btn btn-primary" id="btn-export-confirm">Export</button>
       </div>
     </div>
   </div>

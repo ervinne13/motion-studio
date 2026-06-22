@@ -359,6 +359,22 @@ function drawSegments() {
         ctx.fillText(label, Math.max(x + w / 2, 10), genY + rh / 2);
         ctx.restore();
       }
+    } else if (jobStatus === 'waiting') {
+      ctx.fillStyle = '#fffbeb';
+      ctx.fillRect(x + 1, genY + 2, w - 2, rh - 4);
+      ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(x + 1, genY + 2, w - 2, rh - 4);
+      ctx.setLineDash([]);
+      if (w > 20) {
+        ctx.fillStyle = '#b45309';
+        ctx.font = '10px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.save();
+        ctx.rect(Math.max(x, 0), genY, Math.min(w, W - Math.max(x, 0)), rh);
+        ctx.clip();
+        ctx.fillText('Waiting', Math.max(x + w / 2, 10), genY + rh / 2);
+        ctx.restore();
+      }
     } else if (jobStatus === 'pending') {
       ctx.fillStyle = '#f8fafc';
       ctx.fillRect(x + 1, genY + 2, w - 2, rh - 4);

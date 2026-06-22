@@ -1,3 +1,72 @@
+/* ─── Buttons ────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border: 1px solid var(--sl-color-neutral-300);
+  background: #fff;
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--sl-color-neutral-700);
+  white-space: nowrap;
+  line-height: 1.4;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+  text-decoration: none;
+}
+.btn:hover:not(:disabled) {
+  background: var(--sl-color-neutral-100);
+  border-color: var(--sl-color-neutral-400);
+}
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-primary {
+  background: var(--sl-color-primary-600);
+  border-color: var(--sl-color-primary-600);
+  color: #fff;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--sl-color-primary-700);
+  border-color: var(--sl-color-primary-700);
+}
+
+.btn-warning-outline {
+  border-color: var(--sl-color-warning-500);
+  color: var(--sl-color-warning-700);
+  background: transparent;
+}
+.btn-warning-outline:hover:not(:disabled) { background: var(--sl-color-warning-50); }
+
+/* ─── Form controls ──────────────────────────────────────────── */
+.form-control {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--sl-color-neutral-300);
+  border-radius: 5px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--sl-color-neutral-900);
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
+}
+.form-control:focus {
+  border-color: var(--sl-color-primary-500);
+  box-shadow: 0 0 0 2px var(--sl-color-primary-100);
+}
+select.form-control { cursor: pointer; }
+textarea.form-control { resize: vertical; min-height: 70px; }
+
+.field-hint-text {
+  font-size: 11px;
+  color: var(--sl-color-neutral-400);
+}
+
 /* ─── Reset ──────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -485,6 +554,11 @@ html, body {
   overflow-y: auto;
 }
 
+@keyframes job-running-pulse {
+  0%, 100% { background: var(--sl-color-neutral-50); }
+  50%       { background: #eff6ff; }
+}
+
 .job-card {
   background: var(--sl-color-neutral-50);
   border: 1px solid var(--sl-color-neutral-200);
@@ -499,6 +573,16 @@ html, body {
 }
 .job-card:hover { background: var(--sl-color-neutral-100); border-color: var(--sl-color-neutral-300); }
 .job-card.active { border-color: var(--sl-color-primary-400); background: var(--sl-color-primary-50); }
+.job-card[data-status="running"] {
+  border-color: #93c5fd;
+  animation: job-running-pulse 2.5s ease-in-out infinite;
+}
+.job-card[data-status="running"]:hover,
+.job-card[data-status="running"].active { animation: none; }
+
+.job-pct {
+  font-size: 12px; font-weight: 600; color: #2563eb; white-space: nowrap; flex-shrink: 0;
+}
 
 .job-row {
   display: flex;
@@ -533,6 +617,7 @@ html, body {
   border-radius: 4px;
 }
 .job-badge-pending    { background: var(--sl-color-neutral-100); color: var(--sl-color-neutral-600); }
+.job-badge-waiting    { background: #fef3c7; color: #b45309; }
 .job-badge-running    { background: #dbeafe; color: #1d4ed8; }
 .job-badge-done       { background: #dcfce7; color: #15803d; }
 .job-badge-failed     { background: #fee2e2; color: #b91c1c; }
@@ -1060,3 +1145,29 @@ html, body {
   font-weight: 500;
 }
 .job-cancel-btn:hover { background: #fee2e2; border-color: #f87171; }
+
+/* ── Job media tabs ── */
+.media-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--sl-color-neutral-200);
+  margin-bottom: 8px;
+}
+.media-tab {
+  flex: 1; padding: 6px 4px;
+  font-size: 12px; font-weight: 500;
+  background: none; border: none; cursor: pointer;
+  color: var(--sl-color-neutral-500);
+  border-bottom: 2px solid transparent;
+  transition: color .15s, border-color .15s;
+}
+.media-tab.active { color: var(--sl-color-primary-600); border-bottom-color: var(--sl-color-primary-600); }
+.media-tab-panel { }
+.gen-status-pulse {
+  padding: 32px 16px; text-align: center;
+  font-size: 14px; font-weight: 500; color: #2563eb;
+  animation: job-running-pulse 1.6s ease-in-out infinite;
+}
+.gen-status-idle {
+  padding: 32px 16px; text-align: center;
+  font-size: 14px; color: var(--sl-color-neutral-400);
+}

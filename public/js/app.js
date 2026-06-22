@@ -26,6 +26,22 @@ async function initProject() {
     } catch (err) { console.error('[initProject] failed to load stored project:', err); }
   }
 
+  // Before creating a fresh project, reuse any existing empty untitled one
+  try {
+    const listRes = await fetch('/api/projects');
+    if (listRes.ok) {
+      const { projects } = await listRes.json();
+      const empty = projects.find(p =>
+        (!p.name || p.name === 'untitled') && p.clipCount === 0 && p.segmentCount === 0
+      );
+      if (empty) {
+        localStorage.setItem('motionStudioProjectId', empty.id);
+        location.href = `/projects/${empty.id}`;
+        return;
+      }
+    }
+  } catch { /* fall through to create */ }
+
   const res = await fetch('/api/project', { method: 'POST' });
   state.project = await res.json();
   localStorage.setItem('motionStudioProjectId', state.project.id);
@@ -49,11 +65,13 @@ function applyProject() {
   _applyingProject = true;
   setHeaderName(p.name || 'untitled');
   document.getElementById('project-name').value = p.name || 'untitled';
-  // Sync settings panel fields (guard prevents sl-change from firing a PATCH)
+  // Sync settings panel fields (_applyingProject guard prevents re-saving on load)
   const gfpsEl = document.getElementById('gen-fps');
   if (gfpsEl) gfpsEl.value = String(p.genFps ?? 24);
   const gfrmEl = document.getElementById('gen-frames-per-segment');
   if (gfrmEl) gfrmEl.value = String(p.genFramesPerSegment ?? 81);
+  const modeEl = document.getElementById('gen-mode');
+  if (modeEl) modeEl.value = p.mode ?? 'subject-replacement';
   const arEl = document.getElementById('aspect-ratio');
   if (arEl) arEl.value = p.aspectRatio ?? '9:16';
   const dpEl = document.getElementById('default-prompt');
@@ -452,7 +470,30 @@ document.getElementById('btn-generate').addEventListener('click', async () => {
 
 // ── Job log panel ──────────────────────────────────────────────
 const _jobs = new Map(); // jobId → job object
-let _sortAsc = true; // true = oldest first (ascending)
+let _sortAsc = localStorage.getItem('logsSortAsc') !== 'false';
+
+// Estimated generation time: ~10 min per 81 frames, linear scale
+const _SECS_PER_FRAME = 600 / 81;
+
+function _estimatePct(job) {
+  if (!job.startedAt) return '~0%';
+  const elapsed    = (Date.now() - new Date(job.startedAt)) / 1000;
+  const frameCount = job.params?.frameCount ?? 81;
+  const estimated  = frameCount * _SECS_PER_FRAME;
+  return `~${Math.min(99, Math.round((elapsed / estimated) * 100))}%`;
+}
+
+// Tick all visible running-job percentage displays every second
+setInterval(() => {
+  document.querySelectorAll('.job-card[data-status="running"] .job-pct').forEach(el => {
+    const startedAt  = el.dataset.startedAt;
+    const frameCount = parseInt(el.dataset.frameCount, 10) || 81;
+    if (!startedAt) return;
+    const elapsed   = (Date.now() - new Date(startedAt)) / 1000;
+    const estimated = frameCount * _SECS_PER_FRAME;
+    el.textContent  = `~${Math.min(99, Math.round((elapsed / estimated) * 100))}%`;
+  });
+}, 1000);
 
 function sortJobList() {
   const list = document.getElementById('jobs-list');
@@ -473,10 +514,22 @@ function sortJobList() {
 
 document.getElementById('btn-sort-logs')?.addEventListener('click', () => {
   _sortAsc = !_sortAsc;
+  localStorage.setItem('logsSortAsc', _sortAsc);
   const btn = document.getElementById('btn-sort-logs');
   btn.classList.toggle('asc', _sortAsc);
   btn.title = _sortAsc ? 'Sort: newest first' : 'Sort: oldest first';
   sortJobList();
+});
+
+// One-time tab wiring for job detail panel
+document.getElementById('job-media-tabs')?.addEventListener('click', e => {
+  const btn = e.target.closest('.media-tab');
+  if (!btn) return;
+  document.querySelectorAll('#job-media-tabs .media-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const tab = btn.dataset.tab;
+  document.getElementById('job-media-ref').hidden = tab !== 'ref';
+  document.getElementById('job-media-gen').hidden = tab !== 'gen';
 });
 
 function ensureLogsContainer() {
@@ -505,26 +558,33 @@ function renderJob(job) {
     card.addEventListener('click', () => showJobInPanel(job.id));
   }
 
-  const seg    = (job.params?.segmentIndex ?? 0) + 1;
-  const status = job.status;
-  const prog   = job.progress;
+  const seg      = (job.params?.segmentIndex ?? 0) + 1;
+  const status   = job.status;
+  const projName = job.params?.projectName ? escHtml(job.params.projectName) : '';
+  const isRunning = status === 'running';
 
-  const progLine = '';
-  const errLine = job.error ? `<div class="job-error">${escHtml(job.error)}</div>` : '';
+  card.dataset.status = status;
+
+  const errLine  = job.error ? `<div class="job-error">${escHtml(job.error)}</div>` : '';
   const retryBtn = status === 'failed'
     ? `<button class="job-retry-btn" data-job-id="${job.id}">↺ Retry</button>`
     : '';
-  const projName = job.params?.projectName ? `<span class="job-project">${escHtml(job.params.projectName)}</span>` : '';
+
+  const label = projName ? `${projName}  Seg ${seg}` : `Seg ${seg}`;
+  const right = isRunning
+    ? `<span class="job-pct" data-started-at="${job.startedAt ?? ''}" data-frame-count="${job.params?.frameCount ?? 81}">${_estimatePct(job)}</span>`
+    : `<span class="job-badge job-badge-${status}">${status}</span>`;
+
   card.innerHTML = `
     <div class="job-row">
-      <span class="job-label">Segment ${seg}${projName ? ' · ' : ''}${projName}</span>
-      <span class="job-badge job-badge-${status}">${status}</span>
+      <span class="job-label">${label}</span>
+      ${right}
     </div>
-    ${progLine}${errLine}${retryBtn}
+    ${errLine}${retryBtn}
   `;
 
   // Pulse dot on logs icon when any job is active
-  const anyActive = [..._jobs.values()].some(j => j.status === 'pending' || j.status === 'running');
+  const anyActive = [..._jobs.values()].some(j => ['pending','waiting','running'].includes(j.status));
   const pulse = document.getElementById('logs-pulse');
   if (pulse) pulse.hidden = !anyActive;
 
@@ -532,19 +592,25 @@ function renderJob(job) {
   timelineSetJobs([..._jobs.values()]);
 }
 
+// Single global SSE — replaces per-job EventSource streams
+let _globalStream = null;
+function ensureGlobalStream() {
+  if (_globalStream && _globalStream.readyState !== EventSource.CLOSED) return;
+  _globalStream = new EventSource('/api/jobs/stream');
+  _globalStream.onmessage = e => {
+    const updated = JSON.parse(e.data);
+    _jobs.set(updated.id, { ...(_jobs.get(updated.id) ?? {}), ...updated });
+    renderJob(updated);
+    if (updated.status === 'done') onJobDone(updated);
+  };
+}
+
 function watchJob(job) {
+  _jobs.set(job.id, job);
   renderJob(job);
   if (job.status === 'done') { onJobDone(job); return; }
-  if (job.status === 'failed') return;
-
-  const es = new EventSource(`/api/jobs/${job.id}/stream`);
-  es.onmessage = e => {
-    const updated = JSON.parse(e.data);
-    renderJob(updated);
-    if (updated.status === 'done') { onJobDone(updated); es.close(); }
-    else if (updated.status === 'failed' || updated.status === 'cancelled') es.close();
-  };
-  es.onerror = () => es.close();
+  if (['failed', 'cancelled'].includes(job.status)) return;
+  ensureGlobalStream();
 }
 
 // Delegated retry handler on logs panel
@@ -655,11 +721,33 @@ function showJobInPanel(jobId) {
   const seg = (job.params?.segmentIndex ?? 0) + 1;
   document.getElementById('right-panel-title').textContent = `Segment ${seg} — ${job.status}`;
 
-  const p   = state.project;
+  const pid = job.params?.projectId ?? state.project?.id;
   const ref = job.params?.referenceImageFilename;
   const img = document.getElementById('job-props-ref-img');
-  img.src    = ref && p ? `/media/${p.id}/uploads/${encodeURIComponent(ref)}` : '';
+  img.src    = ref && pid ? `/media/${pid}/uploads/${encodeURIComponent(ref)}` : '';
   img.hidden = !ref;
+
+  // Reset to ref tab on each open
+  document.querySelectorAll('#job-media-tabs .media-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'ref'));
+  document.getElementById('job-media-ref').hidden = false;
+  document.getElementById('job-media-gen').hidden = true;
+
+  // Gen video tab content
+  const outputFile = job.result?.outputPath?.split('/').pop();
+  const genContent = document.getElementById('job-props-gen-content');
+  if (genContent) {
+    if (job.status === 'done' && outputFile && pid) {
+      genContent.innerHTML = `<video src="/media/${pid}/generated/${encodeURIComponent(outputFile)}" controls playsinline style="width:100%;border-radius:6px;display:block"></video>`;
+    } else if (job.status === 'running') {
+      genContent.innerHTML = `<div class="gen-status-pulse">Generating…</div>`;
+    } else if (job.status === 'waiting') {
+      genContent.innerHTML = `<div class="gen-status-idle">Waiting — ComfyUI busy</div>`;
+    } else if (job.status === 'pending') {
+      genContent.innerHTML = `<div class="gen-status-idle">Pending</div>`;
+    } else {
+      genContent.innerHTML = `<div class="gen-status-idle">—</div>`;
+    }
+  }
 
   const durSec    = job.params ? (job.params.frameCount / job.params.genFps).toFixed(1) : '—';
   const queued    = (job.queuedAt || job.createdAt) ? new Date(job.queuedAt || job.createdAt).toLocaleTimeString() : '—';
@@ -667,13 +755,11 @@ function showJobInPanel(jobId) {
   const isLive    = job.status === 'running' && job.startedAt && !job.completedAt;
   const elapsed   = _fmtElapsed(job.startedAt, job.completedAt);
 
-  const outputFile = job.result?.outputPath?.split('/').pop();
-  const pid = job.params?.projectId;
   const outputLink = outputFile && pid
     ? `<a href="/media/${pid}/generated/${encodeURIComponent(outputFile)}" target="_blank" class="job-result-link">▶ View output</a>`
     : null;
 
-  const canCancel = job.status === 'pending' || job.status === 'running';
+  const canCancel = ['pending','waiting','running'].includes(job.status);
   document.getElementById('job-props-details').innerHTML = `
     <div class="asset-props-row"><span>Status</span><span class="job-badge job-badge-${job.status}">${job.status}</span></div>
     <div class="asset-props-row"><span>Project</span><span>${escHtml(job.params?.projectName ?? '—')}</span></div>
@@ -741,7 +827,7 @@ document.addEventListener('frame:select', async e => {
 });
 
 // Save per-segment prompt on blur
-document.getElementById('frame-prompt')?.addEventListener('sl-blur', async e => {
+document.getElementById('frame-prompt')?.addEventListener('blur', async e => {
   const p = state.project;
   if (!p || !_selectedSegIdForFrame) return;
   const value = e.target.value?.trim() || null;
@@ -766,11 +852,11 @@ document.querySelectorAll('.rail-btn').forEach(btn => {
 });
 
 // ── Settings sync ──────────────────────────────────────────────
-document.getElementById('project-name')?.addEventListener('sl-input', e => {
+document.getElementById('project-name')?.addEventListener('input', e => {
   if (!_applyingProject) setHeaderName(e.target.value || 'untitled');
 });
 
-document.getElementById('gen-fps')?.addEventListener('sl-change', async e => {
+document.getElementById('gen-fps')?.addEventListener('change', async e => {
   if (_applyingProject) return;
   const p = state.project;
   if (!p) return;
@@ -789,7 +875,7 @@ document.getElementById('gen-fps')?.addEventListener('sl-change', async e => {
   updateGenerateButton();
 });
 
-document.getElementById('gen-frames-per-segment')?.addEventListener('sl-change', async e => {
+document.getElementById('gen-frames-per-segment')?.addEventListener('change', async e => {
   if (_applyingProject) return;
   const p = state.project;
   if (!p) return;
@@ -808,7 +894,7 @@ document.getElementById('gen-frames-per-segment')?.addEventListener('sl-change',
   updateGenerateButton();
 });
 
-document.getElementById('project-name')?.addEventListener('sl-change', async e => {
+document.getElementById('project-name')?.addEventListener('change', async e => {
   if (_applyingProject) return;
   const name = e.target.value?.trim() || 'untitled';
   setHeaderName(name);
@@ -822,7 +908,7 @@ document.getElementById('project-name')?.addEventListener('sl-change', async e =
   });
 });
 
-document.getElementById('aspect-ratio')?.addEventListener('sl-change', async e => {
+document.getElementById('aspect-ratio')?.addEventListener('change', async e => {
   if (_applyingProject) return;
   const p = state.project;
   if (!p) return;
@@ -833,8 +919,19 @@ document.getElementById('aspect-ratio')?.addEventListener('sl-change', async e =
   });
 });
 
+document.getElementById('gen-mode')?.addEventListener('change', async e => {
+  if (_applyingProject) return;
+  const p = state.project;
+  if (!p) return;
+  await fetch(`/api/project/${p.id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: e.target.value }),
+  });
+});
+
 let _defaultPromptDebounce = null;
-document.getElementById('default-prompt')?.addEventListener('sl-input', async e => {
+document.getElementById('default-prompt')?.addEventListener('input', async e => {
   if (_applyingProject) return;
   const p = state.project;
   if (!p) return;
@@ -848,7 +945,7 @@ document.getElementById('default-prompt')?.addEventListener('sl-input', async e 
   }, 300);
 });
 
-document.getElementById('default-seed')?.addEventListener('sl-change', async e => {
+document.getElementById('default-seed')?.addEventListener('change', async e => {
   if (_applyingProject) return;
   const p = state.project;
   if (!p) return;

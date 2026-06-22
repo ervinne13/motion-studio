@@ -171,6 +171,34 @@ select:focus, input:focus { outline: 2px solid var(--brand); outline-offset: 1px
 .acc-body { display: none; border-top: 1px solid var(--border); }
 .acc-item.open .acc-body { display: block; }
 .seg-video { width: 100%; display: block; }
+
+/* ── Segment detail rows ── */
+.mob-seg-details { padding: 12px 14px; display: flex; flex-direction: column; gap: 0; }
+.mob-seg-row {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  padding: 8px 0; border-bottom: 1px solid var(--border); gap: 12px;
+  font-size: 13px;
+}
+.mob-seg-row:last-child { border-bottom: none; }
+.mob-seg-row > span:first-child { color: var(--muted); flex-shrink: 0; }
+.mob-seg-row > span:last-child  { text-align: right; word-break: break-word; }
+.mob-error-text { color: #b91c1c; word-break: break-word; }
+
+/* ── Reference image ── */
+.mob-ref-wrap { margin-top: 12px; border-radius: 8px; overflow: hidden; }
+.mob-ref-img  { width: 100%; display: block; max-height: 280px; object-fit: cover; }
+
+/* ── Cancel / Retry buttons ── */
+.mob-job-actions { display: flex; gap: 8px; margin-top: 12px; }
+.mob-cancel-btn, .mob-retry-btn {
+  flex: 1; padding: 10px 12px; border-radius: 8px;
+  font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid;
+}
+.mob-cancel-btn { background: #fff5f5; border-color: #fca5a5; color: #b91c1c; }
+.mob-cancel-btn:active { background: #fee2e2; }
+.mob-retry-btn  { background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; }
+.mob-retry-btn:active { background: #dbeafe; }
+.mob-cancel-btn:disabled, .mob-retry-btn:disabled { opacity: .5; cursor: not-allowed; }
 .seg-status-pulse {
   padding: 28px 16px; text-align: center;
   font-size: 14px; font-weight: 500; color: var(--brand);

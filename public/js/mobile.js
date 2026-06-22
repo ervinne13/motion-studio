@@ -11,6 +11,7 @@ let _detailTimer = null;
 
 function stopPolling() {
   if (_detailTimer) { clearInterval(_detailTimer); _detailTimer = null; }
+  stopElapsedTimer();
 }
 
 function route() {
@@ -238,6 +239,87 @@ async function renderProjects() {
 }
 
 // ── Project detail ────────────────────────────────────────────────
+let _currentDetailId = null;
+let _elapsedTimer    = null;
+
+function stopElapsedTimer() {
+  if (_elapsedTimer) { clearInterval(_elapsedTimer); _elapsedTimer = null; }
+}
+
+function fmtTime(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleTimeString();
+}
+
+function fmtElapsed(startedAt, completedAt) {
+  if (!startedAt) return '—';
+  const sec = Math.round((new Date(completedAt ?? undefined) - new Date(startedAt)) / 1000);
+  if (isNaN(sec) || sec < 0) return '—';
+  return sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m ${sec % 60}s`;
+}
+
+function buildSegBody(id, segIdx, asset, job) {
+  const status = job?.status ?? (asset ? 'done' : null);
+
+  let mediaHtml = '';
+  if (asset) {
+    mediaHtml = `<video class="seg-video" data-src="/media/${id}/generated/${encodeURIComponent(asset.filename)}" muted playsinline controls preload="none"></video>`;
+  } else if (status === 'running') {
+    mediaHtml = `<div class="seg-status-pulse">Generating…</div>`;
+  } else if (status === 'waiting') {
+    mediaHtml = `<div class="seg-status-idle seg-status-waiting">Up next — ComfyUI busy</div>`;
+  } else if (status === 'pending') {
+    mediaHtml = `<div class="seg-status-idle">Pending in queue…</div>`;
+  } else if (status === 'failed') {
+    mediaHtml = `<div class="seg-status-idle" style="color:#b91c1c">Generation failed</div>`;
+  } else {
+    mediaHtml = `<div class="seg-status-idle">Not generated yet</div>`;
+  }
+
+  if (!job) return mediaHtml;
+
+  const durSec     = (job.params?.frameCount && job.params?.genFps)
+    ? (job.params.frameCount / job.params.genFps).toFixed(1) : null;
+  const isLive     = status === 'running' && job.startedAt && !job.completedAt;
+  const elapsed    = fmtElapsed(job.startedAt, job.completedAt);
+  const refImg     = job.params?.referenceImageFilename;
+  const canCancel  = ['pending','waiting','running'].includes(status);
+  const canRetry   = ['pending','waiting','running','failed'].includes(status);
+
+  const rows = [
+    ['Frames',      job.params?.frameCount ?? '—'],
+    durSec ? ['Duration', `${durSec}s`] : null,
+    ['Start frame', job.params?.startFrame ?? 0],
+    ['Seed',        job.params?.seed ?? '—'],
+    ['Queued',      fmtTime(job.queuedAt || job.createdAt)],
+    ['Started',     fmtTime(job.startedAt)],
+    ['Elapsed',     isLive
+      ? `<span class="mob-elapsed" data-started-at="${job.startedAt}">${elapsed}</span>`
+      : elapsed],
+    job.error ? ['Error', `<span class="mob-error-text">${esc(job.error)}</span>`] : null,
+  ].filter(Boolean).map(([l, v]) =>
+    `<div class="mob-seg-row"><span>${l}</span><span>${v}</span></div>`
+  ).join('');
+
+  const refHtml = refImg
+    ? `<div class="mob-ref-wrap"><img src="/media/${id}/uploads/${encodeURIComponent(refImg)}" alt="Reference" class="mob-ref-img" loading="lazy"></div>`
+    : '';
+
+  const actionsHtml = (canCancel || canRetry) ? `
+    <div class="mob-job-actions">
+      ${canCancel ? `<button class="mob-cancel-btn" data-job-id="${job.id}">✕ Cancel</button>` : ''}
+      ${canRetry  ? `<button class="mob-retry-btn"  data-job-id="${job.id}">↺ Retry</button>`  : ''}
+    </div>` : '';
+
+  return `
+    ${mediaHtml}
+    <div class="mob-seg-details">
+      ${rows}
+      ${refHtml}
+      ${actionsHtml}
+    </div>`;
+}
+
 async function renderProjectDetail(id) {
   setView('<div class="mobile-loading">Loading…</div>');
   try {
@@ -260,15 +342,26 @@ async function fetchAndPaintDetail(id) {
   const exportFiles = (exportsRes?.ok ? (await exportsRes.json()).exports : null) ?? [];
   const projJobs    = jobs.filter(j => j.params?.projectId === id && j.params?.jobType !== 'qwen-edit');
 
+  _currentDetailId = id;
   paintProjectDetail(id, project, projJobs, exportFiles);
 
   const hasActive = projJobs.some(j => ['pending','waiting','running'].includes(j.status));
   if (hasActive && !_detailTimer) {
     _detailTimer = setInterval(() => pollDetail(id), 3000);
   }
+
+  // Live elapsed counter for running jobs
+  stopElapsedTimer();
+  if (hasActive) {
+    _elapsedTimer = setInterval(() => {
+      document.querySelectorAll('.mob-elapsed[data-started-at]').forEach(el => {
+        el.textContent = fmtElapsed(el.dataset.startedAt, null);
+      });
+    }, 1000);
+  }
 }
 
-// Polls job statuses and updates badges/videos in-place — never replaces the DOM
+// Polls job statuses and updates in-place — never replaces the DOM
 async function pollDetail(id) {
   if (location.hash !== `#project/${id}`) { stopPolling(); return; }
 
@@ -286,16 +379,17 @@ async function pollDetail(id) {
     const item   = document.querySelector(`.acc-item[data-seg-idx="${segIdx}"]`);
     if (!item) return;
 
+    // Update header badge
     const badge = item.querySelector('.mbadge');
     if (badge) {
-      badge.className = `mbadge ${badgeClass[job.status] ?? ''}`;
+      badge.className  = `mbadge ${badgeClass[job.status] ?? ''}`;
       badge.textContent = badgeLabel[job.status] ?? job.status;
     }
 
     if (job.status === 'done' && !item.querySelector('video')) needsVideo.push(segIdx);
   });
 
-  // Inject video elements for newly completed segments
+  // Inject video + full details for newly completed segments
   if (needsVideo.length > 0) {
     const projRes = await fetch(`/api/project/${id}`).catch(() => null);
     if (projRes?.ok) {
@@ -307,12 +401,12 @@ async function pollDetail(id) {
       });
       needsVideo.forEach(segIdx => {
         const asset = latestAsset.get(segIdx);
-        if (!asset) return;
-        const item = document.querySelector(`.acc-item[data-seg-idx="${segIdx}"]`);
+        const job   = projJobs.find(j => (j.params?.segmentIndex ?? 0) === segIdx);
+        const item  = document.querySelector(`.acc-item[data-seg-idx="${segIdx}"]`);
         if (!item) return;
         const body = item.querySelector('.acc-body');
         if (!body) return;
-        body.innerHTML = `<video class="seg-video" data-src="/media/${id}/generated/${encodeURIComponent(asset.filename)}" muted playsinline controls preload="none"></video>`;
+        body.innerHTML = buildSegBody(id, segIdx, asset, job);
         if (item.classList.contains('open')) {
           const vid = body.querySelector('video');
           if (vid && !vid.src && vid.dataset.src) vid.src = vid.dataset.src;
@@ -322,7 +416,7 @@ async function pollDetail(id) {
   }
 
   const stillActive = projJobs.some(j => ['pending','waiting','running'].includes(j.status));
-  if (!stillActive) stopPolling();
+  if (!stillActive) { stopPolling(); stopElapsedTimer(); }
 }
 
 function paintProjectDetail(id, project, jobs, exportFiles) {
@@ -351,27 +445,12 @@ function paintProjectDetail(id, project, jobs, exportFiles) {
       const job    = [...jobs].reverse().find(j => (j.params?.segmentIndex ?? 0) === segIdx);
       const status = job?.status ?? (asset ? 'done' : 'unknown');
 
-      let bodyHtml = '';
-      if (asset) {
-        bodyHtml = `<video class="seg-video" data-src="/media/${id}/generated/${encodeURIComponent(asset.filename)}" muted playsinline controls preload="none"></video>`;
-      } else if (status === 'running') {
-        bodyHtml = `<div class="seg-status-pulse">Generating…</div>`;
-      } else if (status === 'waiting') {
-        bodyHtml = `<div class="seg-status-idle seg-status-waiting">Up next — ComfyUI busy</div>`;
-      } else if (status === 'pending') {
-        bodyHtml = `<div class="seg-status-idle">Pending in queue…</div>`;
-      } else if (status === 'failed') {
-        bodyHtml = `<div class="seg-status-idle" style="color:#b91c1c">Generation failed</div>`;
-      } else {
-        bodyHtml = `<div class="seg-status-idle">Not generated yet</div>`;
-      }
-
       const badgeHtml = (status === 'done' || asset)
         ? `<span class="mbadge mbadge-done">Done</span>`
-        : status === 'running'  ? `<span class="mbadge mbadge-running">Running</span>`
-        : status === 'waiting'  ? `<span class="mbadge mbadge-waiting">Waiting</span>`
-        : status === 'pending'  ? `<span class="mbadge mbadge-pending">Pending</span>`
-        : status === 'failed'   ? `<span class="mbadge mbadge-failed">Failed</span>`
+        : status === 'running' ? `<span class="mbadge mbadge-running">Running</span>`
+        : status === 'waiting' ? `<span class="mbadge mbadge-waiting">Waiting</span>`
+        : status === 'pending' ? `<span class="mbadge mbadge-pending">Pending</span>`
+        : status === 'failed'  ? `<span class="mbadge mbadge-failed">Failed</span>`
         : '';
 
       return `
@@ -381,7 +460,7 @@ function paintProjectDetail(id, project, jobs, exportFiles) {
             ${badgeHtml}
             <span class="acc-chevron">›</span>
           </button>
-          <div class="acc-body">${bodyHtml}</div>
+          <div class="acc-body">${buildSegBody(id, segIdx, asset, job)}</div>
         </div>`;
     }).join('');
   }
@@ -416,7 +495,7 @@ function paintProjectDetail(id, project, jobs, exportFiles) {
       ${heroHtml}
       ${renderHtml}
       ${allSegIndices.length > 0 ? '<div class="acc-section-label">Segments</div>' : ''}
-      <div class="acc-list">${accordionHtml}</div>
+      <div class="acc-list" id="acc-list">${accordionHtml}</div>
     </div>
   `);
 
@@ -424,7 +503,6 @@ function paintProjectDetail(id, project, jobs, exportFiles) {
   document.querySelectorAll('.acc-item').forEach(item => {
     item.querySelector('.acc-header').addEventListener('click', () => {
       const isOpen = item.classList.contains('open');
-      // Close all, pause all videos
       document.querySelectorAll('.acc-item.open').forEach(other => {
         other.classList.remove('open');
         other.querySelector('video')?.pause();
@@ -437,6 +515,43 @@ function paintProjectDetail(id, project, jobs, exportFiles) {
     });
   });
 
+  // ── Cancel / Retry via event delegation ──────────────────────
+  document.getElementById('acc-list')?.addEventListener('click', async e => {
+    const cancelBtn = e.target.closest('.mob-cancel-btn');
+    if (cancelBtn) {
+      cancelBtn.disabled = true;
+      cancelBtn.textContent = 'Cancelling…';
+      const res = await fetch(`/api/jobs/${cancelBtn.dataset.jobId}`, { method: 'DELETE' });
+      if (res.ok) {
+        const { job } = await res.json();
+        const item = cancelBtn.closest('.acc-item');
+        if (item) {
+          const badge = item.querySelector('.mbadge');
+          if (badge) { badge.className = 'mbadge mbadge-failed'; badge.textContent = 'Cancelled'; }
+          // Remove action buttons
+          item.querySelector('.mob-job-actions')?.remove();
+        }
+      } else {
+        cancelBtn.disabled = false;
+        cancelBtn.textContent = '✕ Cancel';
+      }
+      return;
+    }
+
+    const retryBtn = e.target.closest('.mob-retry-btn');
+    if (retryBtn) {
+      retryBtn.disabled = true;
+      retryBtn.textContent = 'Retrying…';
+      const res = await fetch(`/api/jobs/${retryBtn.dataset.jobId}/retry`, { method: 'POST' });
+      if (res.ok) {
+        await fetchAndPaintDetail(id);
+      } else {
+        retryBtn.disabled = false;
+        retryBtn.textContent = '↺ Retry';
+      }
+    }
+  });
+
   // ── Wire render button ────────────────────────────────────────
   document.getElementById('btn-render')?.addEventListener('click', async () => {
     const includeAudio = document.getElementById('chk-render-audio')?.checked ?? false;
@@ -444,7 +559,6 @@ function paintProjectDetail(id, project, jobs, exportFiles) {
     btnRender.disabled = true;
     btnRender.textContent = 'Rendering…';
 
-    // Insert pulsing placeholder before render section, scroll to top
     const renderSection = document.getElementById('render-section');
     let placeholder = document.getElementById('export-placeholder');
     if (!placeholder) {

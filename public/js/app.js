@@ -652,13 +652,34 @@ document.getElementById('panel-logs').addEventListener('click', async e => {
 // Delegated cancel handler on right panel job details
 document.getElementById('job-props').addEventListener('click', async e => {
   const cancelEl = e.target.closest('.job-cancel-btn');
-  if (!cancelEl) return;
-  const jobId = cancelEl.dataset.jobId;
-  const res = await fetch(`/api/jobs/${jobId}`, { method: 'DELETE' });
-  if (res.ok) {
-    const { job } = await res.json();
-    renderJob(job);
-    showJobInPanel(jobId);
+  if (cancelEl) {
+    const jobId = cancelEl.dataset.jobId;
+    const res = await fetch(`/api/jobs/${jobId}`, { method: 'DELETE' });
+    if (res.ok) {
+      const { job } = await res.json();
+      renderJob(job);
+      showJobInPanel(jobId);
+    }
+    return;
+  }
+
+  const retryEl = e.target.closest('.job-retry-btn');
+  if (retryEl) {
+    const jobId = retryEl.dataset.jobId;
+    retryEl.disabled = true;
+    retryEl.textContent = 'Retrying…';
+    const res = await fetch(`/api/jobs/${jobId}/retry`, { method: 'POST' });
+    if (res.ok) {
+      const { job: newJob } = await res.json();
+      watchJob(newJob);
+      // Refresh old job card too
+      const oldJob = _jobs.get(jobId);
+      if (oldJob) renderJob({ ...oldJob, status: 'cancelled' });
+    } else {
+      retryEl.disabled = false;
+      retryEl.textContent = '↺ Retry Job';
+      alert('Retry failed');
+    }
   }
 });
 
@@ -810,6 +831,7 @@ function showJobInPanel(jobId) {
     ${job.error ? `<div class="asset-props-row" style="color:#b91c1c"><span>Error</span><span style="word-break:break-word">${escHtml(job.error)}</span></div>` : ''}
     ${outputLink ? `<div class="asset-props-row">${outputLink}</div>` : ''}
     ${canCancel ? `<div class="job-cancel-row"><button class="job-cancel-btn" data-job-id="${job.id}">✕ Cancel Job</button></div>` : ''}
+    ${(canCancel || job.status === 'failed') ? `<div class="job-cancel-row"><button class="job-retry-btn" data-job-id="${job.id}">↺ Retry Job</button></div>` : ''}
   `;
 
   let specificRows;

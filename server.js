@@ -14,7 +14,7 @@ import {
   createProject, loadProject, saveProject,
   computeSegments, uploadsDir, thumbsDir, projectDir,
 } from './lib/project.js';
-import { enqueue, getJob, getTodayJobs, subscribeJob, subscribeAll, cancelJob, resumeOnStartup } from './lib/queue.js';
+import { enqueue, getJob, getTodayJobs, subscribeJob, subscribeAll, cancelJob, forceRelease, resumeOnStartup } from './lib/queue.js';
 import { generateQwenEdit } from './lib/generate.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -637,6 +637,20 @@ app.delete('/api/jobs/:jobId', async (req, res) => {
   const job = await cancelJob(req.params.jobId);
   if (!job) return res.status(404).json({ error: 'Job not found' });
   res.json({ job });
+});
+
+app.post('/api/jobs/:jobId/retry', async (req, res) => {
+  const { jobId } = req.params;
+  try {
+    const job = await getJob(jobId);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    await cancelJob(jobId);
+    forceRelease(jobId);
+    const newJob = await enqueue(job.params);
+    res.json({ job: newJob });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));

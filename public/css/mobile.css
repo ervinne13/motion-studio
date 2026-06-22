@@ -23,6 +23,7 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
 .brand { font-size: 16px; font-weight: 700; flex: 1; }
 .top-bar-link { color: var(--muted); font-size: 13px; text-decoration: none; }
 .top-bar-link:hover { color: var(--brand); }
+.top-bar-sep { color: var(--border); font-size: 13px; user-select: none; }
 
 /* ── Page content ── */
 .page { padding: 16px; display: flex; flex-direction: column; gap: 16px; max-width: 480px; margin: 0 auto; }

@@ -8,7 +8,7 @@ import { randomUUID } from 'crypto';
 
 dotenv.config();
 
-import { probeVideo, extractFrameRange, concatVideos } from './lib/video.js';
+import { probeVideo, extractFrameRange, concatVideos, mixAudio } from './lib/video.js';
 import { basename } from 'path';
 import {
   createProject, loadProject, saveProject,
@@ -212,6 +212,45 @@ app.patch('/api/project/:id/segments/:segId', async (req, res) => {
   }
 });
 
+// GET /api/project/:id/generatedAssets
+app.get('/api/project/:id/generatedAssets', async (req, res) => {
+  try {
+    const project = await loadProject(req.params.id);
+    res.json({ generatedAssets: project.generatedAssets ?? [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /api/project/:id/generatedAssets/:assetId — remove file + entry, unassign if active
+app.delete('/api/project/:id/generatedAssets/:assetId', async (req, res) => {
+  const { id, assetId } = req.params;
+  try {
+    const project = await loadProject(id);
+    if (!project.generatedAssets) project.generatedAssets = [];
+    const asset = project.generatedAssets.find(a => a.id === assetId);
+    if (!asset) return res.status(404).json({ error: 'Asset not found' });
+
+    // Remove file from disk
+    const { unlink } = await import('fs/promises');
+    await unlink(join(projectDir(id), 'generated', asset.filename)).catch(() => {});
+
+    // Remove from array
+    project.generatedAssets = project.generatedAssets.filter(a => a.id !== assetId);
+
+    // Unassign if it was the active video on its segment
+    const seg = project.segments.find(s => s.id === asset.segId);
+    if (seg?.generatedVideo === asset.filename) {
+      // Try to assign next most-recent asset for this segment, else null
+      const remaining = project.generatedAssets
+        .filter(a => a.segId === asset.segId)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      seg.generatedVideo = remaining[0]?.filename ?? null;
+    }
+
+    await saveProject(project);
+    res.json({ project });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.delete('/api/project/:id/segments/:segId', async (req, res) => {
   const { id, segId } = req.params;
   try {
@@ -354,10 +393,10 @@ app.post('/api/project/:id/generate', async (req, res) => {
     const resolvedPrompt = prompt || project.defaultPrompt || '';
     const genFps         = project.genFps  || 24;
 
-    // Project segments are the canonical segmentation — one job per segment
-    const clipSegs = project.segments.filter(s =>
-      s.sourceClipId === clipId &&
-      (!segIds || segIds.includes(s.id))
+    // Project segments are the canonical segmentation — one job per selected segment
+    const allClipSegs = project.segments.filter(s => s.sourceClipId === clipId);
+    const clipSegs = allClipSegs.filter(s =>
+      segIds ? segIds.includes(s.id) : s.selected
     );
 
     let lastRef   = defaultRef;
@@ -365,17 +404,25 @@ app.post('/api/project/:id/generate', async (req, res) => {
     let prevJobId = null;
     const batchId = `${id.slice(0, 6)}-${Date.now()}`;
 
+    // If the first selected segment is mid-stream, seed prevComfyFilename from the previous segment's stored value
+    const firstSegmentIndex = clipSegs.length ? allClipSegs.indexOf(clipSegs[0]) : 0;
+    let batchStartPrevComfy = firstSegmentIndex > 0
+      ? (allClipSegs[firstSegmentIndex - 1].comfyInputFilename ?? null)
+      : null;
+
     for (let i = 0; i < clipSegs.length; i++) {
-      const seg = clipSegs[i];
+      const seg         = clipSegs[i];
+      // Use position in the full clip segment list so extend workflow fires correctly
+      const segmentIndex = allClipSegs.indexOf(seg);
       if (seg.referenceImage) lastRef = seg.referenceImage;
 
       // Convert source-frame segment boundaries to gen-frame counts
       const genFrameCount  = Math.round(seg.frameCount  / clip.fps * genFps);
       const genStartFrame  = Math.round(seg.startFrame  / clip.fps * genFps);
-      const outputPath     = join(outputDir, `seg${i + 1}_${batchId}.mp4`);
+      const outputPath     = join(outputDir, `seg${segmentIndex + 1}_${batchId}.mp4`);
 
       const params = {
-        segmentIndex:           i,
+        segmentIndex,
         projectId:              id,
         projectName:            project.name || 'untitled',
         segId:                  seg.id,
@@ -389,8 +436,10 @@ app.post('/api/project/:id/generate', async (req, res) => {
         prompt:                 resolvedPrompt,
         seed:                   resolvedSeed,
         outputPath,
-        jobPrefix:              `motion-studio/${batchId}_seg${i + 1}`,
+        jobPrefix:              `motion-studio/${batchId}_seg${segmentIndex + 1}`,
         clipFps:                clip.fps,
+        // For the first job in a mid-stream batch, supply the prior segment's ComfyUI filename directly
+        ...(i === 0 && batchStartPrevComfy ? { prevComfyFilename: batchStartPrevComfy } : {}),
       };
 
       const job = await enqueue(params, prevJobId);
@@ -413,6 +462,7 @@ app.post('/api/project/:id/generate', async (req, res) => {
 // POST /api/project/:id/export
 app.post('/api/project/:id/export', async (req, res) => {
   const { id } = req.params;
+  const { includeAudio = false } = req.body ?? {};
   try {
     const project  = await loadProject(id);
     const genSegs  = project.segments.filter(s => s.generatedVideo);
@@ -422,11 +472,28 @@ app.post('/api/project/:id/export', async (req, res) => {
     const genDir    = join(projectDir(id), 'generated');
     await mkdir(genDir, { recursive: true });
 
-    const inputs    = genSegs.map(s => join(genDir, s.generatedVideo));
-    const outFile   = `export_${Date.now()}.mp4`;
-    const outputPath = join(genDir, outFile);
+    const inputs     = genSegs.map(s => join(genDir, s.generatedVideo));
+    const stamp      = Date.now();
+    const concatFile = `export_${stamp}_concat.mp4`;
+    const concatPath = join(genDir, concatFile);
 
-    await concatVideos(inputs, outputPath);
+    await concatVideos(inputs, concatPath);
+
+    let outFile  = `export_${stamp}.mp4`;
+    let outPath  = join(genDir, outFile);
+
+    if (includeAudio && project.sourceClips?.length) {
+      const audioSource = join(projectDir(id), 'uploads', project.sourceClips[0].filename);
+      await mixAudio(concatPath, audioSource, outPath);
+      // clean up silent concat
+      const { unlink } = await import('fs/promises');
+      await unlink(concatPath).catch(() => {});
+    } else {
+      // rename concat → final (no audio mixing needed)
+      const { rename } = await import('fs/promises');
+      await rename(concatPath, outPath);
+    }
+
     res.json({ path: `/media/${id}/generated/${encodeURIComponent(outFile)}`, filename: outFile });
   } catch (e) {
     console.error('Export error:', e);
@@ -489,21 +556,50 @@ app.delete('/api/jobs/:jobId', async (req, res) => {
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
+// ── Client-side routes (serve HTML shells) ─────────────────────
+app.get('/projects/:id', (_req, res) =>
+  res.sendFile(join(__dirname, 'public', 'index.html')));
+app.get('/logs',         (_req, res) =>
+  res.sendFile(join(__dirname, 'public', 'logs.html')));
+app.get('/logs/:jobId',  (_req, res) =>
+  res.sendFile(join(__dirname, 'public', 'logs.html')));
+
 // ── Server-side job→project sync ───────────────────────────────
-// Writes generatedVideo onto the segment so browser reconnects always see it,
-// regardless of whether the SSE stream was open when the job completed.
 async function syncJobToProject(job) {
   if (job.status !== 'done' || !job.result?.outputPath) return;
-  const { segId, projectId } = job.params ?? {};
+  const { segId, projectId, segmentIndex } = job.params ?? {};
   if (!segId || !projectId) return;
   try {
-    const project = await loadProject(projectId);
-    const seg = project.segments.find(s => s.id === segId);
-    if (seg && !seg.generatedVideo) {
-      seg.generatedVideo = job.result.outputPath.split('/').pop();
-      await saveProject(project);
-      console.log(`[server] synced ${seg.generatedVideo} → ${segId}`);
+    const project  = await loadProject(projectId);
+    const seg      = project.segments.find(s => s.id === segId);
+    if (!seg) return;
+
+    const filename = job.result.outputPath.split('/').pop();
+    if (!project.generatedAssets) project.generatedAssets = [];
+
+    // Determine version number (how many assets already exist for this segment)
+    const existing = project.generatedAssets.filter(a => a.segId === segId);
+    const version  = existing.length; // 0 = "Seg N", 1 = "Seg N.1", etc.
+
+    // Add asset if not already tracked
+    const alreadyTracked = project.generatedAssets.some(a => a.filename === filename);
+    if (!alreadyTracked) {
+      project.generatedAssets.push({
+        id:           `ga-${randomUUID().slice(0, 8)}`,
+        filename,
+        segId,
+        segmentIndex: segmentIndex ?? project.segments.indexOf(seg),
+        version,
+        createdAt:    new Date().toISOString(),
+      });
     }
+
+    // Always assign as active and update comfyInputFilename
+    seg.generatedVideo = filename;
+    if (job.result.comfyInputFilename) seg.comfyInputFilename = job.result.comfyInputFilename;
+
+    await saveProject(project);
+    console.log(`[server] synced ${filename} → ${segId} (v${version})`);
   } catch { /* project may have been deleted */ }
 }
 

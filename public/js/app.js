@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { timelineSetProject, timelineClearSelection, timelineRedraw, getFrameInfo } from './timeline.js';
+import { timelineSetProject, timelineSetJobs, timelineClearSelection, timelineRedraw, getFrameInfo } from './timeline.js';
 import { playerBuildPlaylist, playerSeek, playerToggleGenSeg } from './player.js';
 
 // Per-segment overlay visibility — read by timeline.js draw to dim hidden segments
@@ -7,13 +7,18 @@ window._hiddenGenSegIds = new Set();
 
 // ── Project init ───────────────────────────────────────────────
 async function initProject() {
-  const stored = localStorage.getItem('motionStudioProjectId');
+  // URL takes priority: /projects/:id
+  const urlMatch = location.pathname.match(/^\/projects\/([^/]+)$/);
+  const urlId    = urlMatch?.[1] ?? null;
+  const stored   = urlId || localStorage.getItem('motionStudioProjectId');
 
   if (stored) {
     try {
       const res = await fetch(`/api/project/${stored}`);
       if (res.ok) {
         state.project = await res.json();
+        localStorage.setItem('motionStudioProjectId', state.project.id);
+        if (!urlId) history.replaceState(null, '', `/projects/${state.project.id}`);
         applyProject();
         await restoreJobs();
         return;
@@ -24,7 +29,7 @@ async function initProject() {
   const res = await fetch('/api/project', { method: 'POST' });
   state.project = await res.json();
   localStorage.setItem('motionStudioProjectId', state.project.id);
-  applyProject();
+  location.href = `/projects/${state.project.id}`;
 }
 
 async function restoreJobs() {
@@ -177,7 +182,7 @@ async function renderProjectGrid() {
       if (e.target.closest('.project-card-delete')) return;
       if (isActive) { closeSwitcher(); return; }
       localStorage.setItem('motionStudioProjectId', p.id);
-      location.reload();
+      location.href = `/projects/${p.id}`;
     });
 
     // Delete project
@@ -187,7 +192,7 @@ async function renderProjectGrid() {
       await fetch(`/api/project/${p.id}`, { method: 'DELETE' });
       if (p.id === state.project?.id) {
         localStorage.removeItem('motionStudioProjectId');
-        location.reload();
+        location.href = '/';
       } else {
         card.remove();
         if (!projectGrid.querySelector('.project-card'))
@@ -205,7 +210,7 @@ document.getElementById('btn-new-project').addEventListener('click', async e => 
   const res = await fetch('/api/project', { method: 'POST' });
   const p   = await res.json();
   localStorage.setItem('motionStudioProjectId', p.id);
-  location.reload();
+  location.href = `/projects/${p.id}`;
 });
 
 function escHtml(s) {
@@ -226,17 +231,21 @@ function renderAssetList() {
     p.assets.filter(a => !clips.has(a)).forEach(n => uploads.appendChild(makeAssetItem('image', n)));
   }
   const genList = document.getElementById('generated-list');
-  const genSegs = p.segments.filter(s => s.generatedVideo);
-  if (!genSegs.length) {
+  const assets  = p.generatedAssets ?? [];
+  if (!assets.length) {
     genList.innerHTML = '<div class="empty-assets">No generated assets</div>';
   } else {
     genList.innerHTML = '';
-    genSegs.forEach((seg, i) => {
-      const item = document.createElement('div');
-      item.className = 'asset-item';
-      const pid = p.id;
-      item.innerHTML = `<span class="asset-type-icon">🎬</span><a class="asset-name" href="/media/${pid}/generated/${encodeURIComponent(seg.generatedVideo)}" target="_blank" title="${escHtml(seg.generatedVideo)}">Seg ${i + 1}</a>`;
-      genList.appendChild(item);
+    // Sort by segmentIndex then version
+    const sorted = [...assets].sort((a, b) =>
+      a.segmentIndex !== b.segmentIndex ? a.segmentIndex - b.segmentIndex : a.version - b.version
+    );
+    sorted.forEach(asset => {
+      const seg   = p.segments.find(s => s.id === asset.segId);
+      const segNum = (asset.segmentIndex ?? 0) + 1;
+      const label  = asset.version === 0 ? `Seg ${segNum}` : `Seg ${segNum}.${asset.version}`;
+      const isActive = seg?.generatedVideo === asset.filename;
+      genList.appendChild(makeGenAssetItem(asset, label, isActive, p.id));
     });
   }
 }
@@ -294,11 +303,72 @@ function makeAssetItem(type, name) {
   return el;
 }
 
+function makeGenAssetItem(asset, label, isActive, projectId) {
+  const el = document.createElement('div');
+  el.className = 'asset-item gen-asset-item' + (isActive ? ' gen-asset-active' : '');
+  el.dataset.assetId = asset.id;
+
+  const src = `/media/${projectId}/generated/${encodeURIComponent(asset.filename)}`;
+  el.innerHTML = `
+    <span class="asset-type-icon">🎬</span>
+    <span class="asset-name gen-asset-label">${escHtml(label)}</span>
+    ${isActive ? '<span class="gen-asset-badge">active</span>' : ''}
+    <span class="gen-asset-actions">
+      ${!isActive ? `<button class="gen-asset-use" data-asset-id="${asset.id}" title="Set as active">Use</button>` : ''}
+      <button class="gen-asset-del" data-asset-id="${asset.id}" title="Delete">✕</button>
+    </span>
+  `;
+
+  // Click label/icon → open video in new tab
+  el.querySelector('.gen-asset-label').addEventListener('click', () => window.open(src, '_blank'));
+  el.querySelector('.asset-type-icon').addEventListener('click', () => window.open(src, '_blank'));
+
+  // Use button → assign as active
+  const useBtn = el.querySelector('.gen-asset-use');
+  if (useBtn) {
+    useBtn.addEventListener('click', async e => {
+      e.stopPropagation();
+      const p = state.project;
+      if (!p) return;
+      const seg = p.segments.find(s => s.id === asset.segId);
+      if (!seg) return;
+      await fetch(`/api/project/${p.id}/segments/${seg.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ generatedVideo: asset.filename }),
+      });
+      seg.generatedVideo = asset.filename;
+      state.project = p;
+      renderAssetList();
+      playerBuildPlaylist(p.segments, p.id, p.sourceClips);
+      timelineSetProject(p);
+    });
+  }
+
+  // Delete button → remove file + asset
+  el.querySelector('.gen-asset-del').addEventListener('click', async e => {
+    e.stopPropagation();
+    if (!confirm(`Delete ${label}? This cannot be undone.`)) return;
+    const p = state.project;
+    if (!p) return;
+    const res  = await fetch(`/api/project/${p.id}/generatedAssets/${asset.id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) { alert(data.error || 'Delete failed'); return; }
+    state.project = data.project;
+    renderAssetList();
+    playerBuildPlaylist(data.project.segments, data.project.id, data.project.sourceClips);
+    timelineSetProject(data.project);
+  });
+
+  return el;
+}
+
 function showAssetInPanel(name, src, itemEl) {
   // Deselect all
   document.querySelectorAll('.asset-item.active').forEach(e => e.classList.remove('active'));
   itemEl?.classList.add('active');
 
+  _clearElapsedTimer();
   // Hide frame props, show asset props
   document.getElementById('frame-props-empty').hidden   = true;
   document.getElementById('frame-props-content').hidden = true;
@@ -439,9 +509,7 @@ function renderJob(job) {
   const status = job.status;
   const prog   = job.progress;
 
-  const progLine = prog
-    ? `<div class="job-progress">${prog.phase ?? ''} ${prog.done ?? 0}/${prog.total ?? '?'}</div>`
-    : '';
+  const progLine = '';
   const errLine = job.error ? `<div class="job-error">${escHtml(job.error)}</div>` : '';
   const retryBtn = status === 'failed'
     ? `<button class="job-retry-btn" data-job-id="${job.id}">↺ Retry</button>`
@@ -461,6 +529,7 @@ function renderJob(job) {
   if (pulse) pulse.hidden = !anyActive;
 
   if (isNew) sortJobList();
+  timelineSetJobs([..._jobs.values()]);
 }
 
 function watchJob(job) {
@@ -514,13 +583,12 @@ document.getElementById('job-props').addEventListener('click', async e => {
 });
 
 async function onJobDone(job) {
-  const segId    = job.params?.segId;
-  const output   = job.result?.outputPath;
+  const segId     = job.params?.segId;
+  const output    = job.result?.outputPath;
   const projectId = job.params?.projectId;
   if (!segId || !output || !projectId) return;
 
   const filename = output.split('/').pop();
-  // Only PATCH if this job belongs to the currently open project
   const p = state.project;
   if (!p || p.id !== projectId) return;
 
@@ -531,6 +599,25 @@ async function onJobDone(job) {
   });
   if (!res.ok) return;
   const { project } = await res.json();
+
+  // syncJobToProject runs server-side concurrently, so generatedAssets may not be in the
+  // PATCH response yet — add the entry locally if it's missing
+  if (!project.generatedAssets) project.generatedAssets = [];
+  const alreadyTracked = project.generatedAssets.some(a => a.filename === filename);
+  if (!alreadyTracked) {
+    const seg      = project.segments.find(s => s.id === segId);
+    const segIdx   = project.segments.indexOf(seg);
+    const existing = project.generatedAssets.filter(a => a.segId === segId);
+    project.generatedAssets.push({
+      id:           `ga-local-${Date.now()}`,
+      filename,
+      segId,
+      segmentIndex: segIdx,
+      version:      existing.length,
+      createdAt:    new Date().toISOString(),
+    });
+  }
+
   state.project = project;
   timelineSetProject(project);
   renderAssetList();
@@ -539,7 +626,21 @@ async function onJobDone(job) {
 }
 
 // ── Job detail in right panel ──────────────────────────────────
+let _elapsedTimer = null;
+
+function _fmtElapsed(startedAt, endAt) {
+  if (!startedAt) return '—';
+  const sec = Math.round((new Date(endAt ?? Date.now()) - new Date(startedAt)) / 1000);
+  return sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m ${sec % 60}s`;
+}
+
+function _clearElapsedTimer() {
+  if (_elapsedTimer) { clearInterval(_elapsedTimer); _elapsedTimer = null; }
+}
+
 function showJobInPanel(jobId) {
+  _clearElapsedTimer();
+
   const job = _jobs.get(jobId);
   if (!job) return;
 
@@ -560,15 +661,11 @@ function showJobInPanel(jobId) {
   img.src    = ref && p ? `/media/${p.id}/uploads/${encodeURIComponent(ref)}` : '';
   img.hidden = !ref;
 
-  const durSec  = job.params ? (job.params.frameCount / job.params.genFps).toFixed(1) : '—';
-  const queued  = (job.queuedAt || job.createdAt) ? new Date(job.queuedAt || job.createdAt).toLocaleTimeString() : '—';
-  const started = job.startedAt   ? new Date(job.startedAt).toLocaleTimeString()   : '—';
-  const elapsedSec = job.startedAt && job.completedAt
-    ? Math.round((new Date(job.completedAt) - new Date(job.startedAt)) / 1000)
-    : null;
-  const elapsed = elapsedSec === null ? '—'
-    : elapsedSec < 60 ? `${elapsedSec}s`
-    : `${Math.floor(elapsedSec / 60)}m ${elapsedSec % 60}s`;
+  const durSec    = job.params ? (job.params.frameCount / job.params.genFps).toFixed(1) : '—';
+  const queued    = (job.queuedAt || job.createdAt) ? new Date(job.queuedAt || job.createdAt).toLocaleTimeString() : '—';
+  const started   = job.startedAt ? new Date(job.startedAt).toLocaleTimeString() : '—';
+  const isLive    = job.status === 'running' && job.startedAt && !job.completedAt;
+  const elapsed   = _fmtElapsed(job.startedAt, job.completedAt);
 
   const outputFile = job.result?.outputPath?.split('/').pop();
   const pid = job.params?.projectId;
@@ -588,11 +685,21 @@ function showJobInPanel(jobId) {
     <div class="asset-props-row"><span>Seed</span><span>${job.params?.seed ?? '—'}</span></div>
     <div class="asset-props-row"><span>Queued</span><span>${queued}</span></div>
     <div class="asset-props-row"><span>Started</span><span>${started}</span></div>
-    <div class="asset-props-row"><span>Elapsed</span><span>${elapsed}</span></div>
+    <div class="asset-props-row"><span>Elapsed</span><span id="job-elapsed">${elapsed}</span></div>
     ${job.error ? `<div class="asset-props-row" style="color:#b91c1c"><span>Error</span><span style="word-break:break-word">${escHtml(job.error)}</span></div>` : ''}
     ${outputLink ? `<div class="asset-props-row">${outputLink}</div>` : ''}
     ${canCancel ? `<div class="job-cancel-row"><button class="job-cancel-btn" data-job-id="${job.id}">✕ Cancel Job</button></div>` : ''}
   `;
+
+  if (isLive) {
+    _elapsedTimer = setInterval(() => {
+      const el = document.getElementById('job-elapsed');
+      if (!el) { _clearElapsedTimer(); return; }
+      const current = _jobs.get(jobId);
+      if (!current || current.status !== 'running') { _clearElapsedTimer(); return; }
+      el.textContent = _fmtElapsed(current.startedAt, null);
+    }, 1000);
+  }
 }
 
 // ── Frame select → right panel ─────────────────────────────────
@@ -855,14 +962,34 @@ function updateExportButton() {
   btn.disabled = !p?.segments.some(s => s.generatedVideo);
 }
 
-document.getElementById('btn-export')?.addEventListener('click', async () => {
+document.getElementById('btn-export')?.addEventListener('click', () => {
+  document.getElementById('export-modal').hidden = false;
+});
+
+document.getElementById('btn-export-cancel')?.addEventListener('click', () => {
+  document.getElementById('export-modal').hidden = true;
+});
+
+document.getElementById('export-modal')?.addEventListener('click', e => {
+  if (e.target === document.getElementById('export-modal'))
+    document.getElementById('export-modal').hidden = true;
+});
+
+document.getElementById('btn-export-confirm')?.addEventListener('click', async () => {
   const p = state.project;
   if (!p) return;
-  const btn = document.getElementById('btn-export');
-  btn.loading = true;
-  btn.disabled = true;
+  const modal   = document.getElementById('export-modal');
+  const confirm = document.getElementById('btn-export-confirm');
+  const includeAudio = document.getElementById('export-audio-check').checked;
+  modal.hidden = true;
+  confirm.loading = true;
+  confirm.disabled = true;
   try {
-    const res = await fetch(`/api/project/${p.id}/export`, { method: 'POST' });
+    const res = await fetch(`/api/project/${p.id}/export`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ includeAudio }),
+    });
     const data = await res.json();
     if (!res.ok) { alert(data.error || 'Export failed'); return; }
     const a = document.createElement('a');
@@ -874,7 +1001,7 @@ document.getElementById('btn-export')?.addEventListener('click', async () => {
   } catch (e) {
     console.error('Export error:', e);
   } finally {
-    btn.loading = false;
+    confirm.loading = false;
     updateExportButton();
   }
 });

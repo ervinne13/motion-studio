@@ -431,7 +431,26 @@ html, body {
   min-width: 0;
 }
 
-.asset-type-icon { flex-shrink: 0; font-size: 14px; }
+.asset-type-icon { flex-shrink: 0; font-size: 14px; cursor: pointer; }
+
+/* Generated assets */
+.gen-asset-item  { cursor: default; }
+.gen-asset-label { cursor: pointer; color: var(--sl-color-primary-600); }
+.gen-asset-label:hover { text-decoration: underline; }
+.gen-asset-active { background: var(--sl-color-success-50); }
+.gen-asset-badge {
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  background: var(--sl-color-success-100); color: var(--sl-color-success-700);
+  border-radius: 10px; padding: 1px 6px; flex-shrink: 0;
+}
+.gen-asset-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; flex-shrink: 0; }
+.gen-asset-use, .gen-asset-del {
+  border: none; border-radius: 4px; padding: 2px 6px; font-size: 11px; cursor: pointer; line-height: 1.4;
+}
+.gen-asset-use { background: var(--sl-color-primary-100); color: var(--sl-color-primary-700); }
+.gen-asset-use:hover { background: var(--sl-color-primary-200); }
+.gen-asset-del { background: transparent; color: var(--sl-color-neutral-400); }
+.gen-asset-del:hover { background: var(--sl-color-danger-100); color: var(--sl-color-danger-700); }
 
 /* Settings */
 .settings-form {
@@ -570,13 +589,44 @@ html, body {
 
 .preview-placeholder p { margin: 0; }
 
-#preview-video {
+#preview-video, #preview-video-buf {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
   max-width: calc(100% - 32px);
   max-height: calc(100% - 32px);
   object-fit: contain;
   border-radius: 4px;
   background: #000;
 }
+#preview-video     { z-index: 2; }
+#preview-video-buf { pointer-events: none; z-index: 3; }
+
+/* ── Export modal ── */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,.45);
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-box {
+  background: #fff; border-radius: 12px;
+  padding: 24px; width: 340px; max-width: calc(100vw - 32px);
+  box-shadow: 0 20px 60px rgba(0,0,0,.25);
+}
+.modal-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+.modal-desc  { font-size: 13px; color: var(--sl-color-neutral-600); margin-bottom: 16px; }
+.modal-check-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 14px; cursor: pointer; margin-bottom: 20px;
+}
+.modal-check-row input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.modal-btn-cancel {
+  padding: 5px 14px; border: 1px solid var(--sl-color-neutral-300);
+  border-radius: 6px; background: #fff; cursor: pointer;
+  font-size: 13px; color: var(--sl-color-neutral-700);
+}
+.modal-btn-cancel:hover { background: var(--sl-color-neutral-50); }
 
 
 .preview-controls {

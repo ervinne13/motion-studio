@@ -14,6 +14,12 @@ const SEG_COLORS = [
 let project    = null;
 let segLayout  = [];   // { ...seg, timelineStart }
 let totalTLFrames = 0;
+let _jobsBySegId = new Map(); // segId → job object
+
+export function timelineSetJobs(jobs) {
+  _jobsBySegId = new Map(jobs.map(j => [j.params?.segId, j]));
+  draw();
+}
 
 let W = 0, H = 0;
 let zoomLevel     = 0;
@@ -316,6 +322,9 @@ function drawSegments() {
     const genY      = 0;
     const hasGen    = !!seg.generatedVideo;
     const isGenHide = hasGen && (window._hiddenGenSegIds?.has(seg.id) ?? false);
+    const activeJob = !hasGen ? _jobsBySegId.get(seg.id) : null;
+    const jobStatus = activeJob?.status;
+
     if (hasGen) {
       ctx.globalAlpha = isGenHide ? 0.4 : 1;
       ctx.fillStyle = '#bbf7d0';
@@ -332,7 +341,38 @@ function drawSegments() {
         ctx.save();
         ctx.rect(Math.max(x, 0), genY, Math.min(w, W - Math.max(x, 0)), rh);
         ctx.clip();
-        ctx.fillText(isGenHide ? '○ hidden' : '✓', Math.max(x + w / 2, 10), genY + rh / 2);
+        ctx.fillText(isGenHide ? '○ hidden' : 'Generated', Math.max(x + w / 2, 10), genY + rh / 2);
+        ctx.restore();
+      }
+    } else if (jobStatus === 'running') {
+      const label = 'Running';
+      ctx.fillStyle = '#dbeafe';
+      ctx.fillRect(x + 1, genY + 2, w - 2, rh - 4);
+      ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 1.5;
+      ctx.strokeRect(x + 1, genY + 2, w - 2, rh - 4);
+      if (w > 20) {
+        ctx.fillStyle = '#1d4ed8';
+        ctx.font = '10px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.save();
+        ctx.rect(Math.max(x, 0), genY, Math.min(w, W - Math.max(x, 0)), rh);
+        ctx.clip();
+        ctx.fillText(label, Math.max(x + w / 2, 10), genY + rh / 2);
+        ctx.restore();
+      }
+    } else if (jobStatus === 'pending') {
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(x + 1, genY + 2, w - 2, rh - 4);
+      ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(x + 1, genY + 2, w - 2, rh - 4);
+      ctx.setLineDash([]);
+      if (w > 20) {
+        ctx.fillStyle = '#64748b';
+        ctx.font = '10px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.save();
+        ctx.rect(Math.max(x, 0), genY, Math.min(w, W - Math.max(x, 0)), rh);
+        ctx.clip();
+        ctx.fillText('Pending', Math.max(x + w / 2, 10), genY + rh / 2);
         ctx.restore();
       }
     } else {

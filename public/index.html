@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.19.1/cdn/themes/light.css" />
   <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.19.1/cdn/shoelace-autoloader.js"></script>
   <link rel="stylesheet" href="/css/app.css">
+  <script>if (window.innerWidth < 768) location.replace('/logs');</script>
 </head>
 <body>
   <div class="app">
@@ -165,7 +166,9 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="width:56px;height:56px;color:var(--sl-color-neutral-300)"><circle cx="12" cy="12" r="10"/><polygon points="10,8 16,12 10,16" fill="currentColor" stroke="none"/></svg>
             <p>No preview — import a video to begin</p>
           </div>
-          <video id="preview-video" hidden playsinline></video>
+          <video id="preview-video"     hidden playsinline></video>
+          <video id="preview-video-buf" hidden playsinline muted></video>
+          <audio id="source-audio" hidden></audio>
         </div>
         <div class="preview-controls">
           <span class="timecode" id="timecode">00:00:00:00 / 00:00:00:00</span>
@@ -294,6 +297,22 @@
   </div>
 
   </div><!-- /app -->
+
+  <!-- Export modal -->
+  <div id="export-modal" class="modal-backdrop" hidden>
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="export-modal-title">
+      <h2 class="modal-title" id="export-modal-title">Export Video</h2>
+      <p class="modal-desc">Concatenates all generated segments into a single file.</p>
+      <label class="modal-check-row">
+        <input type="checkbox" id="export-audio-check" checked>
+        Include audio from source video
+      </label>
+      <div class="modal-actions">
+        <button class="modal-btn-cancel" id="btn-export-cancel">Cancel</button>
+        <sl-button variant="primary" size="small" id="btn-export-confirm">Export</sl-button>
+      </div>
+    </div>
+  </div>
 
   <script type="module" src="/js/player.js"></script>
   <script type="module" src="/js/timeline.js"></script>

@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Generation Logs · Motion Studio</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --brand:   #2563eb;
+      --bg:      #f8fafc;
+      --surface: #ffffff;
+      --border:  #e2e8f0;
+      --text:    #0f172a;
+      --muted:   #64748b;
+      --radius:  10px;
+    }
+
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100dvh; }
+
+    /* ── Header ── */
+    .top-bar {
+      position: sticky; top: 0; z-index: 10;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
+      padding: 0 16px; height: 52px;
+    }
+    .back-btn {
+      display: flex; align-items: center; gap: 4px;
+      color: var(--brand); font-size: 15px; text-decoration: none;
+      padding: 6px 0; background: none; border: none; cursor: pointer;
+    }
+    .back-btn svg { width: 18px; height: 18px; }
+    .top-bar-title { font-size: 16px; font-weight: 600; flex: 1; text-align: right; }
+    .brand-link {
+      color: var(--muted); font-size: 13px; text-decoration: none;
+      margin-left: auto; white-space: nowrap;
+    }
+    .brand-link:hover { color: var(--brand); }
+
+    /* ── List view ── */
+    .job-list { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+
+    .job-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px 16px;
+      text-decoration: none; color: inherit; display: block;
+      transition: border-color .15s;
+    }
+    .job-card:active { background: #f1f5f9; }
+    .job-card-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .job-card-label { font-weight: 500; font-size: 15px; }
+    .job-card-project { color: var(--muted); font-size: 13px; }
+    .job-card-progress { margin-top: 6px; font-size: 13px; color: var(--muted); }
+    .job-card-error { margin-top: 6px; font-size: 13px; color: #b91c1c; }
+
+    /* ── Detail view ── */
+    .detail-view { padding: 0 0 32px; }
+    .detail-section { background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+    .detail-row {
+      display: flex; align-items: baseline; justify-content: space-between;
+      padding: 11px 16px; border-bottom: 1px solid var(--border); gap: 16px;
+    }
+    .detail-row:last-child { border-bottom: none; }
+    .detail-label { font-size: 14px; color: var(--muted); flex-shrink: 0; }
+    .detail-value { font-size: 14px; text-align: right; word-break: break-word; }
+    .detail-error { color: #b91c1c; }
+    .detail-link { color: var(--brand); text-decoration: none; font-weight: 500; }
+    .detail-img-wrap { padding: 0 16px; }
+    .detail-img { width: 100%; border-radius: var(--radius); display: block; background: #e2e8f0; }
+
+    /* ── Status badges ── */
+    .badge {
+      display: inline-flex; align-items: center;
+      padding: 2px 8px; border-radius: 20px;
+      font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+      white-space: nowrap;
+    }
+    .badge-pending   { background: #f1f5f9; color: #64748b; }
+    .badge-running   { background: #dbeafe; color: #1d4ed8; }
+    .badge-done      { background: #dcfce7; color: #15803d; }
+    .badge-failed    { background: #fee2e2; color: #b91c1c; }
+    .badge-cancelled { background: #f3f4f6; color: #6b7280; }
+
+    /* ── Empty / loading ── */
+    .empty { text-align: center; padding: 48px 16px; color: var(--muted); font-size: 15px; }
+
+    /* ── Running pulse ── */
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    .badge-running { animation: pulse 1.6s ease-in-out infinite; }
+  </style>
+</head>
+<body>
+
+<div class="top-bar" id="top-bar">
+  <!-- filled by JS -->
+</div>
+
+<div id="root"></div>
+
+<script type="module">
+const path  = location.pathname;
+const match = path.match(/^\/logs\/(.+)$/);
+
+if (match) {
+  renderDetail(match[1]);
+} else {
+  renderList();
+}
+
+// ── Helpers ────────────────────────────────────────────────────
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function badge(status) {
+  return `<span class="badge badge-${status}">${status}</span>`;
+}
+
+function fmtTime(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleTimeString();
+}
+
+function fmtElapsed(startedAt, completedAt) {
+  if (!startedAt || !completedAt) return '—';
+  const sec = Math.round((new Date(completedAt) - new Date(startedAt)) / 1000);
+  return sec < 60 ? `${sec}s` : `${Math.floor(sec/60)}m ${sec%60}s`;
+}
+
+// ── List view ──────────────────────────────────────────────────
+
+async function renderList() {
+  document.title = 'Generation Logs · Motion Studio';
+  document.getElementById('top-bar').innerHTML = `
+    <span class="top-bar-title">Generation Logs</span>
+    <a href="/" class="brand-link">← Studio</a>
+  `;
+
+  const root = document.getElementById('root');
+  root.innerHTML = '<div class="empty">Loading…</div>';
+
+  let jobs;
+  try {
+    const res = await fetch('/api/jobs');
+    ({ jobs } = await res.json());
+  } catch {
+    root.innerHTML = '<div class="empty">Failed to load logs.</div>';
+    return;
+  }
+
+  if (!jobs.length) {
+    root.innerHTML = '<div class="empty">No generation runs yet.</div>';
+    return;
+  }
+
+  root.innerHTML = `<div class="job-list" id="job-list"></div>`;
+  const list = document.getElementById('job-list');
+
+  jobs.forEach(job => {
+    const seg  = (job.params?.segmentIndex ?? 0) + 1;
+    const proj = job.params?.projectName ? ` · ${esc(job.params.projectName)}` : '';
+    const prog = job.progress
+      ? `<div class="job-card-progress">${esc(job.progress.phase ?? '')} ${job.progress.done ?? 0}/${job.progress.total ?? '?'}</div>`
+      : '';
+    const err  = job.error
+      ? `<div class="job-card-error">${esc(job.error)}</div>` : '';
+
+    const card = document.createElement('a');
+    card.className = 'job-card';
+    card.href = `/logs/${job.id}`;
+    card.innerHTML = `
+      <div class="job-card-row">
+        <span class="job-card-label">Segment ${seg}<span class="job-card-project">${proj}</span></span>
+        ${badge(job.status)}
+      </div>
+      ${prog}${err}
+    `;
+    list.appendChild(card);
+
+    // Live-update running jobs
+    if (job.status === 'pending' || job.status === 'running') {
+      const es = new EventSource(`/api/jobs/${job.id}/stream`);
+      es.onmessage = e => {
+        const updated = JSON.parse(e.data);
+        const p2 = updated.progress;
+        const progEl = card.querySelector('.job-card-progress');
+        const badge2 = card.querySelector('.badge');
+        if (badge2) { badge2.className = `badge badge-${updated.status}`; badge2.textContent = updated.status; }
+        if (p2 && progEl) { progEl.textContent = `${p2.phase ?? ''} ${p2.done ?? 0}/${p2.total ?? '?'}`; }
+        else if (!p2 && progEl) progEl.remove();
+        if (updated.status !== 'pending' && updated.status !== 'running') es.close();
+      };
+      es.onerror = () => es.close();
+    }
+  });
+}
+
+// ── Detail view ────────────────────────────────────────────────
+
+async function renderDetail(jobId) {
+  document.getElementById('top-bar').innerHTML = `
+    <a href="/logs" class="back-btn">
+      <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+      Logs
+    </a>
+    <span class="top-bar-title" id="detail-title">…</span>
+  `;
+
+  const root = document.getElementById('root');
+  root.innerHTML = '<div class="empty">Loading…</div>';
+
+  let job;
+  try {
+    const res = await fetch(`/api/jobs/${jobId}`);
+    if (!res.ok) throw new Error('not found');
+    ({ job } = await res.json());
+  } catch {
+    root.innerHTML = '<div class="empty">Job not found.</div>';
+    return;
+  }
+
+  paintDetail(job);
+
+  if (job.status === 'pending' || job.status === 'running') {
+    const es = new EventSource(`/api/jobs/${jobId}/stream`);
+    es.onmessage = e => {
+      const updated = JSON.parse(e.data);
+      paintDetail(updated);
+      if (updated.status !== 'pending' && updated.status !== 'running') es.close();
+    };
+    es.onerror = () => es.close();
+  }
+}
+
+function paintDetail(job) {
+  const seg  = (job.params?.segmentIndex ?? 0) + 1;
+  document.title = `Segment ${seg} — ${job.status} · Motion Studio`;
+  const titleEl = document.getElementById('detail-title');
+  if (titleEl) titleEl.textContent = `Segment ${seg} — ${job.params?.projectName ?? ''}`;
+
+  const durSec = job.params ? (job.params.frameCount / job.params.genFps).toFixed(1) : '—';
+  const elapsedSec = job.startedAt && job.completedAt
+    ? Math.round((new Date(job.completedAt) - new Date(job.startedAt)) / 1000) : null;
+  const elapsed = elapsedSec === null ? '—'
+    : elapsedSec < 60 ? `${elapsedSec}s`
+    : `${Math.floor(elapsedSec / 60)}m ${elapsedSec % 60}s`;
+
+  const outputFile = job.result?.outputPath?.split('/').pop();
+  const pid = job.params?.projectId;
+  const outputLink = outputFile && pid
+    ? `<a href="/media/${pid}/generated/${encodeURIComponent(outputFile)}" target="_blank" class="detail-link">▶ View output</a>`
+    : '—';
+
+  const refImg = job.params?.referenceImageFilename;
+  const imgHtml = refImg && pid
+    ? `<div class="detail-img-wrap"><img class="detail-img" src="/media/${pid}/uploads/${encodeURIComponent(refImg)}" alt="Reference"></div>`
+    : '';
+
+  const rows = [
+    ['Status',      badge(job.status)],
+    ['Project',     esc(job.params?.projectName ?? '—')],
+    ['Segment #',   seg],
+    ['Frames',      job.params?.frameCount ?? '—'],
+    ['Gen FPS',     job.params?.genFps ?? '—'],
+    ['Duration',    `${durSec}s`],
+    ['Start frame', job.params?.startFrame ?? 0],
+    ['Seed',        job.params?.seed ?? '—'],
+    ['Queued',      fmtTime(job.queuedAt || job.createdAt)],
+    ['Started',     fmtTime(job.startedAt)],
+    ['Elapsed',     elapsed],
+    ...(job.error ? [['Error', `<span class="detail-error">${esc(job.error)}</span>`]] : []),
+    ['Output',      outputLink],
+  ].map(([label, value]) =>
+    `<div class="detail-row"><span class="detail-label">${label}</span><span class="detail-value">${value}</span></div>`
+  ).join('');
+
+  document.getElementById('root').innerHTML = `
+    <div class="detail-view">
+      <div class="detail-section">${rows}</div>
+      ${imgHtml}
+    </div>
+  `;
+}
+</script>
+</body>
+</html>

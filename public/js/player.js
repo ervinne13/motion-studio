@@ -242,7 +242,7 @@ function checkAdvance() {
       const next = playlist[playlistIdx];
       _loadEntry(next, true, next.localStart);
     } else {
-      video.pause();
+      _seekToGlobal(0, true);
     }
   }
 }
@@ -251,7 +251,7 @@ function checkAdvance() {
 btnPlay.addEventListener('click', togglePlay);
 document.addEventListener('keydown', e => {
   if (e.code !== 'Space') return;
-  if (['INPUT','TEXTAREA','SL-INPUT','SL-TEXTAREA'].includes(document.activeElement?.tagName)) return;
+  if (['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) return;
   e.preventDefault();
   togglePlay();
 });
@@ -262,7 +262,7 @@ function togglePlay() {
 }
 
 video.addEventListener('play', () => {
-  btnPlay.textContent = '⏸ Pause';
+  btnPlay.textContent = 'Pause Preview';
   startTimecodeLoop();
   if (_audioActive) audioEl.play().catch(() => {});
 });
@@ -277,9 +277,7 @@ video.addEventListener('ended', () => {
     playlistIdx++;
     _loadEntry(playlist[playlistIdx], true, playlist[playlistIdx].localStart);
   } else {
-    btnPlay.textContent = '▶ Play Preview';
-    stopTimecodeLoop();
-    audioEl.pause();
+    _seekToGlobal(0, true);
   }
 });
 

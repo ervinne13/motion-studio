@@ -39,14 +39,10 @@ const rctx        = rulerCanvas.getContext('2d');
 
 function rowH() { return H / ROW_COUNT; }
 function ppf() {
-  if (zoomLevel === 0 && totalTLFrames > 0 && W > 0) {
-    // Fit all segments in the canvas, but cap any single segment at 420px
-    const maxSegFrames = segLayout.length > 0
-      ? Math.max(...segLayout.map(s => s.frameCount))
-      : totalTLFrames;
-    const bySegCap = 420 / Math.max(1, maxSegFrames);
-    const byFitAll = Math.max(1, W - TRAIL_PX) / totalTLFrames;
-    return Math.min(bySegCap, byFitAll);
+  if (zoomLevel === 0 && segLayout.length > 0) {
+    // 420px per full segment — timeline scrolls for longer projects
+    const maxSegFrames = Math.max(...segLayout.map(s => s.frameCount));
+    return 420 / Math.max(1, maxSegFrames);
   }
   return PX_PER_FRAME[zoomLevel];
 }

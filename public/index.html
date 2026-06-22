@@ -102,9 +102,14 @@
         <div class="panel-content" id="panel-logs">
           <div class="panel-header">
             <span>Generation Logs</span>
-            <button class="sort-btn asc" id="btn-sort-logs" title="Sort: newest first">
-              <svg viewBox="0 0 20 20" fill="currentColor"><path d="M3 3a1 1 0 000 2h11a1 1 0 100-2H3zm0 4a1 1 0 000 2h7a1 1 0 100-2H3zm0 4a1 1 0 100 2h4a1 1 0 100-2H3zm12-1.586V14a1 1 0 01-2 0V9.414l-.293.293a1 1 0 01-1.414-1.414l2-2a1 1 0 011.414 0l2 2a1 1 0 01-1.414 1.414L15 9.414z"/></svg>
-            </button>
+            <div style="display:flex;gap:4px;align-items:center">
+              <button class="sort-btn" id="btn-refresh-logs" title="Refresh logs">
+                <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/></svg>
+              </button>
+              <button class="sort-btn asc" id="btn-sort-logs" title="Sort: newest first">
+                <svg viewBox="0 0 20 20" fill="currentColor"><path d="M3 3a1 1 0 000 2h11a1 1 0 100-2H3zm0 4a1 1 0 000 2h7a1 1 0 100-2H3zm0 4a1 1 0 100 2h4a1 1 0 100-2H3zm12-1.586V14a1 1 0 01-2 0V9.414l-.293.293a1 1 0 01-1.414-1.414l2-2a1 1 0 011.414 0l2 2a1 1 0 01-1.414 1.414L15 9.414z"/></svg>
+              </button>
+            </div>
           </div>
           <div class="logs-empty">
             <svg viewBox="0 0 20 20" fill="currentColor" style="width:32px;height:32px;color:var(--sl-color-neutral-300)"><path d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 0v12h8V4H6zm1 3h6v1H7V7zm0 3h6v1H7v-1zm0 3h4v1H7v-1z"/></svg>
@@ -215,6 +220,7 @@
                 <div class="asset-props-img-wrap">
                   <img id="job-props-ref-img" src="" alt="Reference image">
                 </div>
+                <div id="job-props-prompt" class="job-props-prompt" hidden></div>
               </div>
               <div id="job-media-gen" class="media-tab-panel" hidden>
                 <div id="job-props-gen-content"></div>
@@ -252,7 +258,12 @@
                 <textarea class="form-control" id="frame-prompt" rows="4"
                   placeholder="Describe the change for this frame…"></textarea>
               </div>
-              <button class="btn btn-primary" id="btn-apply-qwen" style="width:100%">Apply with Qwen →</button>
+              <div class="qwen-controls">
+                <label class="qwen-nsfw-label">
+                  <input type="checkbox" id="chk-qwen-nsfw"> NSFW workflow
+                </label>
+                <button class="btn btn-primary" id="btn-apply-qwen" style="flex:1">Apply with Qwen →</button>
+              </div>
               <div class="field-group" id="frame-history" hidden>
                 <div class="field-label">History</div>
                 <div class="history-strip" id="history-strip"></div>

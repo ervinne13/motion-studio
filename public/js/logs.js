@@ -87,7 +87,10 @@ async function renderList() {
   const _jobMap = new Map();
   jobs.forEach(job => {
     _jobMap.set(job.id, job);
-    const seg  = (job.params?.segmentIndex ?? 0) + 1;
+    const isQwen = job.params?.jobType === 'qwen-edit';
+    const label  = isQwen
+      ? `Frame ${job.params.frameIndex ?? '?'}${job.params.nsfw ? ' (NSFW)' : ''}`
+      : `Segment ${(job.params?.segmentIndex ?? 0) + 1}`;
     const proj = job.params?.projectName ? ` · ${esc(job.params.projectName)}` : '';
     const err  = job.error
       ? `<div class="job-card-error">${esc(job.error)}</div>` : '';
@@ -97,7 +100,7 @@ async function renderList() {
     card.href = `/logs/${job.id}`;
     card.innerHTML = `
       <div class="job-card-row">
-        <span class="job-card-label">Segment ${seg}<span class="job-card-project">${proj}</span></span>
+        <span class="job-card-label">${esc(label)}<span class="job-card-project">${proj}</span></span>
         ${badge(job.status)}
       </div>
       ${err}
@@ -184,12 +187,16 @@ function _clearElapsedTimer() {
 function paintDetail(job) {
   _clearElapsedTimer();
 
-  const seg  = (job.params?.segmentIndex ?? 0) + 1;
-  document.title = `Segment ${seg} — ${job.status} · Motion Studio`;
+  const isQwen = job.params?.jobType === 'qwen-edit';
+  const label  = isQwen
+    ? `Frame ${job.params?.frameIndex ?? '?'}${job.params?.nsfw ? ' (NSFW)' : ''}`
+    : `Segment ${(job.params?.segmentIndex ?? 0) + 1}`;
+  document.title = `${label} — ${job.status} · Motion Studio`;
   const titleEl = document.getElementById('detail-title');
-  if (titleEl) titleEl.textContent = `Segment ${seg} — ${job.params?.projectName ?? ''}`;
+  if (titleEl) titleEl.textContent = `${label} — ${job.params?.projectName ?? ''}`;
 
-  const durSec = job.params ? (job.params.frameCount / job.params.genFps).toFixed(1) : '—';
+  const durSec = (!isQwen && job.params?.frameCount && job.params?.genFps)
+    ? (job.params.frameCount / job.params.genFps).toFixed(1) : null;
   const isLive = job.status === 'running' && job.startedAt && !job.completedAt;
   const elapsedSec = job.startedAt && job.completedAt
     ? Math.round((new Date(job.completedAt) - new Date(job.startedAt)) / 1000) : null;
@@ -222,13 +229,24 @@ function paintDetail(job) {
     genTabContent = `<div class="detail-media-empty">—</div>`;
   }
 
-  const rows = [
+  const rows = isQwen ? [
     ['Status',      badge(job.status)],
     ['Project',     esc(job.params?.projectName ?? '—')],
-    ['Segment #',   seg],
+    ['Type',        `Qwen Edit${job.params?.nsfw ? ' (NSFW)' : ' (Safe)'}`],
+    ['Frame #',     job.params?.frameIndex ?? '—'],
+    ['Prompt',      esc(job.params?.prompt || '—')],
+    ['Queued',      fmtTime(job.queuedAt || job.createdAt)],
+    ['Started',     fmtTime(job.startedAt)],
+    ['Elapsed',     isLive ? `<span id="job-elapsed">${elapsed}</span>` : elapsed],
+    ...(job.error ? [['Error', `<span class="detail-error">${esc(job.error)}</span>`]] : []),
+    ['Output',      outputLink],
+  ] : [
+    ['Status',      badge(job.status)],
+    ['Project',     esc(job.params?.projectName ?? '—')],
+    ['Segment #',   (job.params?.segmentIndex ?? 0) + 1],
     ['Frames',      job.params?.frameCount ?? '—'],
     ['Gen FPS',     job.params?.genFps ?? '—'],
-    ['Duration',    `${durSec}s`],
+    ['Duration',    durSec ? `${durSec}s` : '—'],
     ['Start frame', job.params?.startFrame ?? 0],
     ['Seed',        job.params?.seed ?? '—'],
     ['Queued',      fmtTime(job.queuedAt || job.createdAt)],

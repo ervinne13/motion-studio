@@ -521,6 +521,17 @@ document.getElementById('btn-sort-logs')?.addEventListener('click', () => {
   sortJobList();
 });
 
+document.getElementById('btn-refresh-logs')?.addEventListener('click', async () => {
+  const p = state.project;
+  if (!p) return;
+  try {
+    const res = await fetch('/api/jobs');
+    if (!res.ok) return;
+    const { jobs } = await res.json();
+    jobs.forEach(job => watchJob(job));
+  } catch { /* ignore */ }
+});
+
 // One-time tab wiring for job detail panel
 document.getElementById('job-media-tabs')?.addEventListener('click', e => {
   const btn = e.target.closest('.media-tab');
@@ -558,7 +569,10 @@ function renderJob(job) {
     card.addEventListener('click', () => showJobInPanel(job.id));
   }
 
-  const seg      = (job.params?.segmentIndex ?? 0) + 1;
+  const isQwen   = job.params?.jobType === 'qwen-edit';
+  const jobLabel = isQwen
+    ? `Frame ${job.params?.frameIndex ?? '?'}${job.params?.nsfw ? ' (NSFW)' : ''}`
+    : `Seg ${(job.params?.segmentIndex ?? 0) + 1}`;
   const status   = job.status;
   const projName = job.params?.projectName ? escHtml(job.params.projectName) : '';
   const isRunning = status === 'running';
@@ -570,7 +584,7 @@ function renderJob(job) {
     ? `<button class="job-retry-btn" data-job-id="${job.id}">↺ Retry</button>`
     : '';
 
-  const label = projName ? `${projName}  Seg ${seg}` : `Seg ${seg}`;
+  const label = projName ? `${projName}  ${jobLabel}` : jobLabel;
   const right = isRunning
     ? `<span class="job-pct" data-started-at="${job.startedAt ?? ''}" data-frame-count="${job.params?.frameCount ?? 81}">${_estimatePct(job)}</span>`
     : `<span class="job-badge job-badge-${status}">${status}</span>`;
@@ -718,8 +732,12 @@ function showJobInPanel(jobId) {
   document.getElementById('frame-props-content').hidden  = true;
   document.getElementById('job-props').hidden            = false;
 
-  const seg = (job.params?.segmentIndex ?? 0) + 1;
-  document.getElementById('right-panel-title').textContent = `Segment ${seg} — ${job.status}`;
+  const isQwen = job.params?.jobType === 'qwen-edit';
+  const seg    = (job.params?.segmentIndex ?? 0) + 1;
+  const label  = isQwen
+    ? `Frame ${job.params?.frameIndex ?? '?'}${job.params?.nsfw ? ' (NSFW)' : ''} — ${job.status}`
+    : `Segment ${seg} — ${job.status}`;
+  document.getElementById('right-panel-title').textContent = label;
 
   const pid = job.params?.projectId ?? state.project?.id;
   const ref = job.params?.referenceImageFilename;
@@ -727,17 +745,38 @@ function showJobInPanel(jobId) {
   img.src    = ref && pid ? `/media/${pid}/uploads/${encodeURIComponent(ref)}` : '';
   img.hidden = !ref;
 
+  // Show prompt below image for Qwen jobs
+  const promptEl = document.getElementById('job-props-prompt');
+  if (promptEl) {
+    const prompt = job.params?.prompt?.trim();
+    if (isQwen && prompt) {
+      promptEl.textContent = prompt;
+      promptEl.hidden = false;
+    } else {
+      promptEl.hidden = true;
+    }
+  }
+
   // Reset to ref tab on each open
   document.querySelectorAll('#job-media-tabs .media-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'ref'));
   document.getElementById('job-media-ref').hidden = false;
   document.getElementById('job-media-gen').hidden = true;
 
-  // Gen video tab content
+  // Gen video / image tab content
   const outputFile = job.result?.outputPath?.split('/').pop();
   const genContent = document.getElementById('job-props-gen-content');
   if (genContent) {
     if (job.status === 'done' && outputFile && pid) {
-      genContent.innerHTML = `<video src="/media/${pid}/generated/${encodeURIComponent(outputFile)}" controls playsinline style="width:100%;border-radius:6px;display:block"></video>`;
+      if (isQwen) {
+        genContent.innerHTML = `
+          <div class="asset-props-img-wrap">
+            <img src="/media/${pid}/uploads/${encodeURIComponent(outputFile)}" alt="Qwen output" style="width:100%;border-radius:6px;display:block">
+          </div>
+          ${job.params?.prompt ? `<div class="job-props-prompt">${escHtml(job.params.prompt)}</div>` : ''}
+        `;
+      } else {
+        genContent.innerHTML = `<video src="/media/${pid}/generated/${encodeURIComponent(outputFile)}" controls playsinline style="width:100%;border-radius:6px;display:block"></video>`;
+      }
     } else if (job.status === 'running') {
       genContent.innerHTML = `<div class="gen-status-pulse">Generating…</div>`;
     } else if (job.status === 'waiting') {
@@ -749,7 +788,6 @@ function showJobInPanel(jobId) {
     }
   }
 
-  const durSec    = job.params ? (job.params.frameCount / job.params.genFps).toFixed(1) : '—';
   const queued    = (job.queuedAt || job.createdAt) ? new Date(job.queuedAt || job.createdAt).toLocaleTimeString() : '—';
   const started   = job.startedAt ? new Date(job.startedAt).toLocaleTimeString() : '—';
   const isLive    = job.status === 'running' && job.startedAt && !job.completedAt;
@@ -760,15 +798,12 @@ function showJobInPanel(jobId) {
     : null;
 
   const canCancel = ['pending','waiting','running'].includes(job.status);
-  document.getElementById('job-props-details').innerHTML = `
+
+  const sharedRows = `
     <div class="asset-props-row"><span>Status</span><span class="job-badge job-badge-${job.status}">${job.status}</span></div>
     <div class="asset-props-row"><span>Project</span><span>${escHtml(job.params?.projectName ?? '—')}</span></div>
-    <div class="asset-props-row"><span>Segment #</span><span>${seg}</span></div>
-    <div class="asset-props-row"><span>Frames</span><span>${job.params?.frameCount ?? '—'}</span></div>
-    <div class="asset-props-row"><span>Gen FPS</span><span>${job.params?.genFps ?? '—'}</span></div>
-    <div class="asset-props-row"><span>Duration</span><span>${durSec}s</span></div>
-    <div class="asset-props-row"><span>Start frame</span><span>${job.params?.startFrame ?? 0}</span></div>
-    <div class="asset-props-row"><span>Seed</span><span>${job.params?.seed ?? '—'}</span></div>
+  `;
+  const tailRows = `
     <div class="asset-props-row"><span>Queued</span><span>${queued}</span></div>
     <div class="asset-props-row"><span>Started</span><span>${started}</span></div>
     <div class="asset-props-row"><span>Elapsed</span><span id="job-elapsed">${elapsed}</span></div>
@@ -776,6 +811,28 @@ function showJobInPanel(jobId) {
     ${outputLink ? `<div class="asset-props-row">${outputLink}</div>` : ''}
     ${canCancel ? `<div class="job-cancel-row"><button class="job-cancel-btn" data-job-id="${job.id}">✕ Cancel Job</button></div>` : ''}
   `;
+
+  let specificRows;
+  if (isQwen) {
+    const prompt = job.params?.prompt?.trim();
+    specificRows = `
+      <div class="asset-props-row"><span>Type</span><span>Qwen Edit${job.params?.nsfw ? ' (NSFW)' : ' (Safe)'}</span></div>
+      <div class="asset-props-row"><span>Frame #</span><span>${job.params?.frameIndex ?? '—'}</span></div>
+      ${prompt ? `<div class="asset-props-row asset-props-row--prompt"><span>Prompt</span><span>${escHtml(prompt)}</span></div>` : ''}
+    `;
+  } else {
+    const durSec = job.params ? (job.params.frameCount / job.params.genFps).toFixed(1) : '—';
+    specificRows = `
+      <div class="asset-props-row"><span>Segment #</span><span>${seg}</span></div>
+      <div class="asset-props-row"><span>Frames</span><span>${job.params?.frameCount ?? '—'}</span></div>
+      <div class="asset-props-row"><span>Gen FPS</span><span>${job.params?.genFps ?? '—'}</span></div>
+      <div class="asset-props-row"><span>Duration</span><span>${durSec}s</span></div>
+      <div class="asset-props-row"><span>Start frame</span><span>${job.params?.startFrame ?? 0}</span></div>
+      <div class="asset-props-row"><span>Seed</span><span>${job.params?.seed ?? '—'}</span></div>
+    `;
+  }
+
+  document.getElementById('job-props-details').innerHTML = sharedRows + specificRows + tailRows;
 
   if (isLive) {
     _elapsedTimer = setInterval(() => {
@@ -1046,10 +1103,92 @@ document.getElementById('ctx-duplicate-seg')?.addEventListener('click', async ()
 });
 
 // ── Support image drop zone ────────────────────────────────────
+let _supportImageFilename = null;
 const supportZone = document.getElementById('support-drop-zone');
 supportZone?.addEventListener('dragover',  e => { e.preventDefault(); supportZone.classList.add('drag-over'); });
 supportZone?.addEventListener('dragleave', e => { if (!supportZone.contains(e.relatedTarget)) supportZone.classList.remove('drag-over'); });
-supportZone?.addEventListener('drop',      e => { e.preventDefault(); supportZone.classList.remove('drag-over'); });
+supportZone?.addEventListener('drop', e => {
+  e.preventDefault();
+  supportZone.classList.remove('drag-over');
+  const filename = e.dataTransfer.getData('application/x-ms-asset-image') || e.dataTransfer.getData('text/plain');
+  if (filename) {
+    _supportImageFilename = filename;
+    const span = supportZone.querySelector('span');
+    if (span) span.textContent = filename;
+    supportZone.title = filename;
+  }
+});
+
+// ── Apply with Qwen ────────────────────────────────────────────
+document.getElementById('btn-apply-qwen')?.addEventListener('click', async () => {
+  const p = state.project;
+  if (!p || !state.selectedFrame) return;
+  const { clipId, frameIndex } = state.selectedFrame;
+  const prompt = document.getElementById('frame-prompt')?.value?.trim() || '';
+  const nsfw   = document.getElementById('chk-qwen-nsfw')?.checked ?? false;
+  const btn    = document.getElementById('btn-apply-qwen');
+
+  btn.disabled = true;
+  btn.textContent = 'Queued…';
+  try {
+    const res = await fetch(`/api/project/${p.id}/frame-edit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clipId, frameIndex, prompt, supportImage: _supportImageFilename, nsfw }),
+    });
+    const data = await res.json();
+    if (!res.ok) { alert(data.error || 'Qwen edit failed'); btn.disabled = false; btn.textContent = 'Apply with Qwen →'; return; }
+
+    const jobId = data.jobId;
+    btn.textContent = 'Running Qwen…';
+
+    // Add pulsing placeholder in Uploads panel
+    const uploadsList = document.getElementById('uploads-list');
+    const placeholder = document.createElement('div');
+    placeholder.className = 'asset-item qwen-placeholder';
+    placeholder.dataset.qwenJob = jobId;
+    placeholder.innerHTML = '<span>Generating in Qwen…</span>';
+    if (uploadsList) uploadsList.prepend(placeholder);
+
+    // Watch via global SSE for this job
+    const es = new EventSource('/api/jobs/stream');
+    es.onmessage = async e => {
+      const updated = JSON.parse(e.data);
+      if (updated.id !== jobId) return;
+      if (updated.status === 'done') {
+        es.close();
+        btn.disabled = false;
+        btn.textContent = 'Apply with Qwen →';
+        // Remove placeholder and refresh asset list
+        document.querySelector(`[data-qwen-job="${jobId}"]`)?.remove();
+        // Reload project to pick up new asset + frameEdits
+        const proj = await fetch(`/api/project/${p.id}`).then(r => r.json());
+        state.project = proj;
+        renderAssetList();
+        // Update frame thumbnail
+        const filename = updated.result?.outputPath?.split('/').pop();
+        const thumb = document.getElementById('frame-thumb');
+        if (thumb && filename) thumb.src = `/media/${p.id}/uploads/${encodeURIComponent(filename)}?t=${Date.now()}`;
+      } else if (updated.status === 'failed' || updated.status === 'cancelled') {
+        es.close();
+        btn.disabled = false;
+        btn.textContent = 'Apply with Qwen →';
+        document.querySelector(`[data-qwen-job="${jobId}"]`)?.remove();
+        alert('Qwen edit failed: ' + (updated.error || updated.status));
+      }
+    };
+    es.onerror = () => {
+      es.close();
+      btn.disabled = false;
+      btn.textContent = 'Apply with Qwen →';
+      document.querySelector(`[data-qwen-job="${jobId}"]`)?.remove();
+    };
+  } catch (err) {
+    alert('Qwen edit failed: ' + err.message);
+    btn.disabled = false;
+    btn.textContent = 'Apply with Qwen →';
+  }
+});
 
 // ── Export button ──────────────────────────────────────────────
 function updateExportButton() {

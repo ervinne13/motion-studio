@@ -1171,3 +1171,59 @@ html, body {
   padding: 32px 16px; text-align: center;
   font-size: 14px; color: var(--sl-color-neutral-400);
 }
+
+/* ── Qwen apply controls ── */
+.qwen-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.qwen-nsfw-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--sl-color-neutral-600);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+.qwen-nsfw-label input[type="checkbox"] { cursor: pointer; }
+
+/* Prompt caption below ref/gen image in Qwen job detail */
+.job-props-prompt {
+  margin-top: 8px;
+  padding: 6px 8px;
+  background: var(--sl-color-neutral-100);
+  border-radius: var(--radius);
+  font-size: 11px;
+  color: var(--sl-color-neutral-700);
+  line-height: 1.5;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+/* Prompt row in details list — allow value to wrap */
+.asset-props-row--prompt span:last-child {
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-align: right;
+}
+
+/* Pulsing placeholder while Qwen job is running */
+.qwen-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--sl-color-neutral-500);
+  font-style: italic;
+  animation: qwen-pulse 1.4s ease-in-out infinite;
+  cursor: default;
+  pointer-events: none;
+}
+
+@keyframes qwen-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}

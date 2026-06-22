@@ -1,0 +1,211 @@
+{
+  "1": {
+    "inputs": {
+      "string_a": [
+        "11",
+        0
+      ],
+      "string_b": "",
+      "delimiter": "              \\n"
+    },
+    "class_type": "StringConcatenate",
+    "_meta": {
+      "title": "Concatenate Text"
+    }
+  },
+  "2": {
+    "inputs": {
+      "seed": -1
+    },
+    "class_type": "Seed (rgthree)",
+    "_meta": {
+      "title": "Seed (rgthree)"
+    }
+  },
+  "3": {
+    "inputs": {
+      "prompt": [
+        "12",
+        0
+      ],
+      "clip": [
+        "9",
+        1
+      ],
+      "vae": [
+        "9",
+        2
+      ]
+    },
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "_meta": {
+      "title": "TextEncodeQwenImageEditPlus Negative"
+    }
+  },
+  "4": {
+    "inputs": {
+      "seed": [
+        "2",
+        0
+      ],
+      "steps": 4,
+      "cfg": 1,
+      "sampler_name": "sa_solver",
+      "scheduler": "beta",
+      "denoise": 1,
+      "model": [
+        "9",
+        0
+      ],
+      "positive": [
+        "8",
+        0
+      ],
+      "negative": [
+        "3",
+        0
+      ],
+      "latent_image": [
+        "14",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "5": {
+    "inputs": {
+      "samples": [
+        "4",
+        0
+      ],
+      "vae": [
+        "9",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "6": {
+    "inputs": {
+      "filename_prefix": "20260622/qwen-aio",
+      "images": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  },
+  "8": {
+    "inputs": {
+      "prompt": [
+        "1",
+        0
+      ],
+      "clip": [
+        "9",
+        1
+      ],
+      "vae": [
+        "9",
+        2
+      ],
+      "image1": [
+        "16",
+        0
+      ]
+    },
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "_meta": {
+      "title": "TextEncodeQwenImageEditPlus Input Prompt"
+    }
+  },
+  "9": {
+    "inputs": {
+      "ckpt_name": "Qwen-Rapid-AIO-NSFW-v23.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint"
+    }
+  },
+  "10": {
+    "inputs": {
+      "pixels": [
+        "16",
+        0
+      ],
+      "vae": [
+        "9",
+        2
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "11": {
+    "inputs": {
+      "text": "((Use the source image as the strict identity reference. Preserve the exact same face, identity, facial structure, proportions, and overall appearance. Do not alter or reinterpret the face in any way.))\n"
+    },
+    "class_type": "Text Multiline",
+    "_meta": {
+      "title": "Positive Prompt"
+    }
+  },
+  "12": {
+    "inputs": {
+      "text": "watermark, text, blurry, bad anatomy, artifacts"
+    },
+    "class_type": "Text Multiline",
+    "_meta": {
+      "title": "Negative Prompt"
+    }
+  },
+  "13": {
+    "inputs": {
+      "width": 960,
+      "height": 1704,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Final Image Size"
+    }
+  },
+  "14": {
+    "inputs": {
+      "switch": false,
+      "on_false": [
+        "10",
+        0
+      ],
+      "on_true": [
+        "13",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "Use Custom Dimensions"
+    }
+  },
+  "16": {
+    "inputs": {
+      "image": "pasted/image (87).png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Optional Input Image"
+    }
+  }
+}

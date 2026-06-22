@@ -15,6 +15,7 @@ import {
   computeSegments, uploadsDir, thumbsDir, projectDir,
 } from './lib/project.js';
 import { enqueue, getJob, getTodayJobs, subscribeJob, subscribeAll, cancelJob, resumeOnStartup } from './lib/queue.js';
+import { generateQwenEdit } from './lib/generate.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app  = express();
@@ -460,6 +461,51 @@ app.post('/api/project/:id/generate', async (req, res) => {
   }
 });
 
+// ── Qwen frame edit ───────────────────────────────────────────
+// POST /api/project/:id/frame-edit
+app.post('/api/project/:id/frame-edit', async (req, res) => {
+  const { id } = req.params;
+  const { clipId, frameIndex, prompt = '', supportImage, nsfw = false } = req.body;
+  try {
+    const project = await loadProject(id);
+    const clip    = project.sourceClips.find(c => c.id === clipId);
+    if (!clip) return res.status(404).json({ error: 'Clip not found' });
+
+    const { mkdir } = await import('fs/promises');
+    const upDir = uploadsDir(id);
+    await mkdir(upDir, { recursive: true });
+
+    const outFilename = `qwen-${nsfw ? 'nsfw' : 'safe'}-f${frameIndex}-${Date.now()}.png`;
+    const outputPath  = join(upDir, outFilename);
+    const videoPath   = join(upDir, clip.filename);
+    const supportPath = supportImage ? join(upDir, supportImage) : null;
+    const prefix      = `qwen-${nsfw ? 'aio' : 'safe'}-`;
+
+    const job = await enqueue({
+      jobType:      'qwen-edit',
+      projectId:    id,
+      projectName:  project.name || 'untitled',
+      clipId,
+      frameIndex,
+      prompt,
+      nsfw,
+      videoPath,
+      supportImagePath: supportPath,
+      outputPath,
+      prefix,
+    });
+
+    subscribeJob(job.id, async updated => {
+      if (updated.status === 'done') await syncQwenJobToProject(updated).catch(() => {});
+    });
+
+    res.json({ jobId: job.id });
+  } catch (err) {
+    console.error('[frame-edit]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Export: concat all done segments ──────────────────────────
 // POST /api/project/:id/export
 app.post('/api/project/:id/export', async (req, res) => {
@@ -588,6 +634,27 @@ app.get('/logs/:jobId',  (_req, res) =>
   res.sendFile(join(__dirname, 'public', 'logs.html')));
 
 // ── Server-side job→project sync ───────────────────────────────
+async function syncQwenJobToProject(job) {
+  if (job.status !== 'done' || !job.result?.outputPath) return;
+  const { projectId, clipId, frameIndex } = job.params ?? {};
+  if (!projectId) return;
+  try {
+    const project  = await loadProject(projectId);
+    const filename = job.result.outputPath.split('/').pop();
+
+    if (!project.assets.includes(filename)) project.assets.push(filename);
+
+    const key  = `${clipId}:${frameIndex}`;
+    if (!project.frameEdits) project.frameEdits = {};
+    const edit = project.frameEdits[key] || { result: null, history: [] };
+    if (edit.result && edit.result !== filename) edit.history.push(edit.result);
+    edit.result = filename;
+    project.frameEdits[key] = edit;
+
+    await saveProject(project);
+  } catch { /* project may have been deleted */ }
+}
+
 async function syncJobToProject(job) {
   if (job.status !== 'done' || !job.result?.outputPath) return;
   const { segId, projectId, segmentIndex } = job.params ?? {};
@@ -631,7 +698,10 @@ app.listen(PORT, async () => {
   // Sync any segments whose jobs finished while server/browser was down
   try {
     const jobs = await getTodayJobs();
-    for (const job of jobs) await syncJobToProject(job);
+    for (const job of jobs) {
+      if (job.params?.jobType === 'qwen-edit') await syncQwenJobToProject(job);
+      else await syncJobToProject(job);
+    }
   } catch {}
   resumeOnStartup().catch(e => console.error('[queue] resumeOnStartup error:', e));
 });

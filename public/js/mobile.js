@@ -299,7 +299,7 @@ function paintProjectDetail(id, project, jobs, exportFiles) {
 
       let bodyHtml = '';
       if (asset) {
-        bodyHtml = `<video class="seg-video" src="/media/${id}/generated/${encodeURIComponent(asset.filename)}" muted playsinline controls></video>`;
+        bodyHtml = `<video class="seg-video" data-src="/media/${id}/generated/${encodeURIComponent(asset.filename)}" muted playsinline controls preload="none"></video>`;
       } else if (status === 'running') {
         bodyHtml = `<div class="seg-status-pulse">Generating…</div>`;
       } else if (status === 'waiting') {
@@ -333,27 +333,25 @@ function paintProjectDetail(id, project, jobs, exportFiles) {
   }
 
   // ── Hero / render section ────────────────────────────────────
-  let heroHtml = '';
-  if (latestExport) {
-    heroHtml = `
-      <div class="export-hero">
-        <video class="export-video" src="/media/${id}/generated/${encodeURIComponent(latestExport)}"
-          autoplay muted loop playsinline controls></video>
-        <div class="export-label">Rendered output</div>
-      </div>`;
-  } else {
-    const hasGenerated = project.segments?.some(s => s.generatedVideo) || latestAsset.size > 0;
-    heroHtml = `
-      <div class="render-section" id="render-section">
-        <label class="render-audio-label">
-          <input type="checkbox" id="chk-render-audio">
-          Include original audio
-        </label>
-        <button class="btn-render" id="btn-render" ${!hasGenerated ? 'disabled' : ''}>
-          Render video
-        </button>
-      </div>`;
-  }
+  const hasGenerated = project.segments?.some(s => s.generatedVideo) || latestAsset.size > 0;
+
+  const heroHtml = latestExport ? `
+    <div class="export-hero">
+      <video class="export-video" src="/media/${id}/generated/${encodeURIComponent(latestExport)}"
+        autoplay muted playsinline controls></video>
+      <div class="export-label">Rendered output</div>
+    </div>` : '';
+
+  const renderHtml = `
+    <div class="render-section" id="render-section">
+      <label class="render-audio-label">
+        <input type="checkbox" id="chk-render-audio">
+        Include original audio
+      </label>
+      <button class="btn-render" id="btn-render" ${!hasGenerated ? 'disabled' : ''}>
+        ${latestExport ? 'Render again' : 'Render video'}
+      </button>
+    </div>`;
 
   setView(`
     <div class="proj-detail">
@@ -362,6 +360,7 @@ function paintProjectDetail(id, project, jobs, exportFiles) {
         <span class="proj-detail-name">${esc(project.name || 'untitled')}</span>
       </div>
       ${heroHtml}
+      ${renderHtml}
       ${allSegIndices.length > 0 ? '<div class="acc-section-label">Segments</div>' : ''}
       <div class="acc-list">${accordionHtml}</div>
     </div>
@@ -379,7 +378,11 @@ function paintProjectDetail(id, project, jobs, exportFiles) {
       if (!isOpen) {
         item.classList.add('open');
         const vid = item.querySelector('video');
-        if (vid) vid.play().catch(() => {});
+        if (vid) {
+          // Lazy-load src only when first opened to avoid interference
+          if (!vid.src && vid.dataset.src) vid.src = vid.dataset.src;
+          vid.play().catch(() => {});
+        }
       }
     });
   });
@@ -391,13 +394,16 @@ function paintProjectDetail(id, project, jobs, exportFiles) {
     btnRender.disabled = true;
     btnRender.textContent = 'Rendering…';
 
-    // Insert pulsing placeholder above render section, scroll to top
+    // Insert pulsing placeholder before render section, scroll to top
     const renderSection = document.getElementById('render-section');
-    const placeholder = document.createElement('div');
-    placeholder.className = 'export-hero';
-    placeholder.id = 'export-placeholder';
+    let placeholder = document.getElementById('export-placeholder');
+    if (!placeholder) {
+      placeholder = document.createElement('div');
+      placeholder.className = 'export-hero';
+      placeholder.id = 'export-placeholder';
+      renderSection.parentElement.insertBefore(placeholder, renderSection);
+    }
     placeholder.innerHTML = `<div class="export-placeholder"><div class="seg-status-pulse">Rendering video…</div></div>`;
-    renderSection.parentElement.insertBefore(placeholder, renderSection);
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
     try {
@@ -410,7 +416,7 @@ function paintProjectDetail(id, project, jobs, exportFiles) {
       if (!res.ok) throw new Error(data.error || 'Export failed');
 
       placeholder.innerHTML = `
-        <video class="export-video" src="${data.path}" autoplay muted loop playsinline controls></video>
+        <video class="export-video" src="${data.path}" autoplay muted playsinline controls></video>
         <div class="export-label">Rendered output</div>`;
 
       btnRender.textContent = 'Render again';

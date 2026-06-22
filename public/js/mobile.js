@@ -7,7 +7,12 @@ function setView(html) {
 }
 
 // ── Router ───────────────────────────────────────────────────────
-let _detailTimer = null;
+let _detailTimer  = null;
+let _elapsedTimer = null;
+
+function stopElapsedTimer() {
+  if (_elapsedTimer) { clearInterval(_elapsedTimer); _elapsedTimer = null; }
+}
 
 function stopPolling() {
   if (_detailTimer) { clearInterval(_detailTimer); _detailTimer = null; }
@@ -240,11 +245,6 @@ async function renderProjects() {
 
 // ── Project detail ────────────────────────────────────────────────
 let _currentDetailId = null;
-let _elapsedTimer    = null;
-
-function stopElapsedTimer() {
-  if (_elapsedTimer) { clearInterval(_elapsedTimer); _elapsedTimer = null; }
-}
 
 function fmtTime(iso) {
   if (!iso) return '—';

@@ -264,11 +264,65 @@ async function fetchAndPaintDetail(id) {
 
   const hasActive = projJobs.some(j => ['pending','waiting','running'].includes(j.status));
   if (hasActive && !_detailTimer) {
-    _detailTimer = setInterval(async () => {
-      if (location.hash !== `#project/${id}`) { stopPolling(); return; }
-      await fetchAndPaintDetail(id);
-    }, 3000);
+    _detailTimer = setInterval(() => pollDetail(id), 3000);
   }
+}
+
+// Polls job statuses and updates badges/videos in-place — never replaces the DOM
+async function pollDetail(id) {
+  if (location.hash !== `#project/${id}`) { stopPolling(); return; }
+
+  const jobsRes = await fetch('/api/jobs').catch(() => null);
+  if (!jobsRes?.ok) return;
+  const { jobs } = await jobsRes.json();
+  const projJobs = jobs.filter(j => j.params?.projectId === id && j.params?.jobType !== 'qwen-edit');
+
+  const badgeClass = { done: 'mbadge-done', running: 'mbadge-running', waiting: 'mbadge-waiting', pending: 'mbadge-pending', failed: 'mbadge-failed' };
+  const badgeLabel = { done: 'Done', running: 'Running', waiting: 'Waiting', pending: 'Pending', failed: 'Failed' };
+  const needsVideo = [];
+
+  projJobs.forEach(job => {
+    const segIdx = job.params?.segmentIndex ?? 0;
+    const item   = document.querySelector(`.acc-item[data-seg-idx="${segIdx}"]`);
+    if (!item) return;
+
+    const badge = item.querySelector('.mbadge');
+    if (badge) {
+      badge.className = `mbadge ${badgeClass[job.status] ?? ''}`;
+      badge.textContent = badgeLabel[job.status] ?? job.status;
+    }
+
+    if (job.status === 'done' && !item.querySelector('video')) needsVideo.push(segIdx);
+  });
+
+  // Inject video elements for newly completed segments
+  if (needsVideo.length > 0) {
+    const projRes = await fetch(`/api/project/${id}`).catch(() => null);
+    if (projRes?.ok) {
+      const project = await projRes.json();
+      const latestAsset = new Map();
+      (project.generatedAssets ?? []).forEach(a => {
+        const cur = latestAsset.get(a.segmentIndex);
+        if (!cur || a.version > cur.version) latestAsset.set(a.segmentIndex, a);
+      });
+      needsVideo.forEach(segIdx => {
+        const asset = latestAsset.get(segIdx);
+        if (!asset) return;
+        const item = document.querySelector(`.acc-item[data-seg-idx="${segIdx}"]`);
+        if (!item) return;
+        const body = item.querySelector('.acc-body');
+        if (!body) return;
+        body.innerHTML = `<video class="seg-video" data-src="/media/${id}/generated/${encodeURIComponent(asset.filename)}" muted playsinline controls preload="none"></video>`;
+        if (item.classList.contains('open')) {
+          const vid = body.querySelector('video');
+          if (vid && !vid.src && vid.dataset.src) vid.src = vid.dataset.src;
+        }
+      });
+    }
+  }
+
+  const stillActive = projJobs.some(j => ['pending','waiting','running'].includes(j.status));
+  if (!stillActive) stopPolling();
 }
 
 function paintProjectDetail(id, project, jobs, exportFiles) {
@@ -338,7 +392,7 @@ function paintProjectDetail(id, project, jobs, exportFiles) {
   const heroHtml = latestExport ? `
     <div class="export-hero">
       <video class="export-video" src="/media/${id}/generated/${encodeURIComponent(latestExport)}"
-        autoplay muted playsinline controls></video>
+        muted playsinline controls></video>
       <div class="export-label">Rendered output</div>
     </div>` : '';
 
@@ -378,11 +432,7 @@ function paintProjectDetail(id, project, jobs, exportFiles) {
       if (!isOpen) {
         item.classList.add('open');
         const vid = item.querySelector('video');
-        if (vid) {
-          // Lazy-load src only when first opened to avoid interference
-          if (!vid.src && vid.dataset.src) vid.src = vid.dataset.src;
-          vid.play().catch(() => {});
-        }
+        if (vid && !vid.src && vid.dataset.src) vid.src = vid.dataset.src;
       }
     });
   });
@@ -416,7 +466,7 @@ function paintProjectDetail(id, project, jobs, exportFiles) {
       if (!res.ok) throw new Error(data.error || 'Export failed');
 
       placeholder.innerHTML = `
-        <video class="export-video" src="${data.path}" autoplay muted playsinline controls></video>
+        <video class="export-video" src="${data.path}" muted playsinline controls></video>
         <div class="export-label">Rendered output</div>`;
 
       btnRender.textContent = 'Render again';

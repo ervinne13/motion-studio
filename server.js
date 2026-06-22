@@ -14,7 +14,7 @@ import {
   createProject, loadProject, saveProject,
   computeSegments, uploadsDir, thumbsDir, projectDir,
 } from './lib/project.js';
-import { enqueue, getJob, getTodayJobs, subscribeJob, resumeOnStartup } from './lib/queue.js';
+import { enqueue, getJob, getTodayJobs, subscribeJob, cancelJob, resumeOnStartup } from './lib/queue.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app  = express();
@@ -396,6 +396,10 @@ app.post('/api/project/:id/generate', async (req, res) => {
       const job = await enqueue(params, prevJobId);
       prevJobId = job.id;
       jobs.push(job);
+      // Server-side hook: update segment when job completes (don't rely solely on browser SSE)
+      subscribeJob(job.id, async updated => {
+        if (updated.status === 'done') await syncJobToProject(updated).catch(() => {});
+      });
     }
 
     res.json({ jobs });
@@ -461,14 +465,14 @@ app.get('/api/jobs/:jobId/stream', async (req, res) => {
   // Send current state immediately
   send(job);
 
-  if (job.status === 'done' || job.status === 'failed') {
+  if (job.status === 'done' || job.status === 'failed' || job.status === 'cancelled') {
     res.end();
     return;
   }
 
   const unsub = subscribeJob(jobId, updated => {
     send(updated);
-    if (updated.status === 'done' || updated.status === 'failed') {
+    if (updated.status === 'done' || updated.status === 'failed' || updated.status === 'cancelled') {
       unsub();
       res.end();
     }
@@ -477,9 +481,38 @@ app.get('/api/jobs/:jobId/stream', async (req, res) => {
   req.on('close', unsub);
 });
 
+app.delete('/api/jobs/:jobId', async (req, res) => {
+  const job = await cancelJob(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  res.json({ job });
+});
+
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
-app.listen(PORT, () => {
+// ── Server-side job→project sync ───────────────────────────────
+// Writes generatedVideo onto the segment so browser reconnects always see it,
+// regardless of whether the SSE stream was open when the job completed.
+async function syncJobToProject(job) {
+  if (job.status !== 'done' || !job.result?.outputPath) return;
+  const { segId, projectId } = job.params ?? {};
+  if (!segId || !projectId) return;
+  try {
+    const project = await loadProject(projectId);
+    const seg = project.segments.find(s => s.id === segId);
+    if (seg && !seg.generatedVideo) {
+      seg.generatedVideo = job.result.outputPath.split('/').pop();
+      await saveProject(project);
+      console.log(`[server] synced ${seg.generatedVideo} → ${segId}`);
+    }
+  } catch { /* project may have been deleted */ }
+}
+
+app.listen(PORT, async () => {
   console.log(`Motion Studio → http://localhost:${PORT}`);
+  // Sync any segments whose jobs finished while server/browser was down
+  try {
+    const jobs = await getTodayJobs();
+    for (const job of jobs) await syncJobToProject(job);
+  } catch {}
   resumeOnStartup().catch(e => console.error('[queue] resumeOnStartup error:', e));
 });

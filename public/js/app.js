@@ -18,7 +18,7 @@ async function initProject() {
         await restoreJobs();
         return;
       }
-    } catch { /* fall through */ }
+    } catch (err) { console.error('[initProject] failed to load stored project:', err); }
   }
 
   const res = await fetch('/api/project', { method: 'POST' });
@@ -382,7 +382,7 @@ document.getElementById('btn-generate').addEventListener('click', async () => {
 
 // ── Job log panel ──────────────────────────────────────────────
 const _jobs = new Map(); // jobId → job object
-let _sortAsc = false; // false = newest first
+let _sortAsc = true; // true = oldest first (ascending)
 
 function sortJobList() {
   const list = document.getElementById('jobs-list');
@@ -405,7 +405,7 @@ document.getElementById('btn-sort-logs')?.addEventListener('click', () => {
   _sortAsc = !_sortAsc;
   const btn = document.getElementById('btn-sort-logs');
   btn.classList.toggle('asc', _sortAsc);
-  btn.title = _sortAsc ? 'Sort: oldest first' : 'Sort: newest first';
+  btn.title = _sortAsc ? 'Sort: newest first' : 'Sort: oldest first';
   sortJobList();
 });
 
@@ -446,7 +446,6 @@ function renderJob(job) {
   const retryBtn = status === 'failed'
     ? `<button class="job-retry-btn" data-job-id="${job.id}">↺ Retry</button>`
     : '';
-
   const projName = job.params?.projectName ? `<span class="job-project">${escHtml(job.params.projectName)}</span>` : '';
   card.innerHTML = `
     <div class="job-row">
@@ -474,7 +473,7 @@ function watchJob(job) {
     const updated = JSON.parse(e.data);
     renderJob(updated);
     if (updated.status === 'done') { onJobDone(updated); es.close(); }
-    else if (updated.status === 'failed') es.close();
+    else if (updated.status === 'failed' || updated.status === 'cancelled') es.close();
   };
   es.onerror = () => es.close();
 }
@@ -499,6 +498,19 @@ document.getElementById('panel-logs').addEventListener('click', async e => {
   if (!res.ok) return;
   const data = await res.json();
   data.jobs.forEach(watchJob);
+});
+
+// Delegated cancel handler on right panel job details
+document.getElementById('job-props').addEventListener('click', async e => {
+  const cancelEl = e.target.closest('.job-cancel-btn');
+  if (!cancelEl) return;
+  const jobId = cancelEl.dataset.jobId;
+  const res = await fetch(`/api/jobs/${jobId}`, { method: 'DELETE' });
+  if (res.ok) {
+    const { job } = await res.json();
+    renderJob(job);
+    showJobInPanel(jobId);
+  }
 });
 
 async function onJobDone(job) {
@@ -551,9 +563,12 @@ function showJobInPanel(jobId) {
   const durSec  = job.params ? (job.params.frameCount / job.params.genFps).toFixed(1) : '—';
   const queued  = (job.queuedAt || job.createdAt) ? new Date(job.queuedAt || job.createdAt).toLocaleTimeString() : '—';
   const started = job.startedAt   ? new Date(job.startedAt).toLocaleTimeString()   : '—';
-  const elapsed = job.startedAt && job.completedAt
-    ? `${((new Date(job.completedAt) - new Date(job.startedAt)) / 1000).toFixed(0)}s`
-    : '—';
+  const elapsedSec = job.startedAt && job.completedAt
+    ? Math.round((new Date(job.completedAt) - new Date(job.startedAt)) / 1000)
+    : null;
+  const elapsed = elapsedSec === null ? '—'
+    : elapsedSec < 60 ? `${elapsedSec}s`
+    : `${Math.floor(elapsedSec / 60)}m ${elapsedSec % 60}s`;
 
   const outputFile = job.result?.outputPath?.split('/').pop();
   const pid = job.params?.projectId;
@@ -561,6 +576,7 @@ function showJobInPanel(jobId) {
     ? `<a href="/media/${pid}/generated/${encodeURIComponent(outputFile)}" target="_blank" class="job-result-link">▶ View output</a>`
     : null;
 
+  const canCancel = job.status === 'pending' || job.status === 'running';
   document.getElementById('job-props-details').innerHTML = `
     <div class="asset-props-row"><span>Status</span><span class="job-badge job-badge-${job.status}">${job.status}</span></div>
     <div class="asset-props-row"><span>Project</span><span>${escHtml(job.params?.projectName ?? '—')}</span></div>
@@ -575,6 +591,7 @@ function showJobInPanel(jobId) {
     <div class="asset-props-row"><span>Elapsed</span><span>${elapsed}</span></div>
     ${job.error ? `<div class="asset-props-row" style="color:#b91c1c"><span>Error</span><span style="word-break:break-word">${escHtml(job.error)}</span></div>` : ''}
     ${outputLink ? `<div class="asset-props-row">${outputLink}</div>` : ''}
+    ${canCancel ? `<div class="job-cancel-row"><button class="job-cancel-btn" data-job-id="${job.id}">✕ Cancel Job</button></div>` : ''}
   `;
 }
 

@@ -52,6 +52,7 @@ app.get('/api/projects', async (_req, res) => {
           name:         p.name || 'untitled',
           clipCount:    p.sourceClips?.length  ?? 0,
           segmentCount: p.segments?.length     ?? 0,
+          doneCount:    p.segments?.filter(s => s.generatedVideo).length ?? 0,
           mode:         p.mode,
         });
       } catch { /* skip corrupted */ }

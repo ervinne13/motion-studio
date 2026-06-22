@@ -221,7 +221,7 @@ async function renderProjects() {
 
     const items = sorted.map(p => {
       const sub = p.segmentCount
-        ? `${p.segmentCount} segment${p.segmentCount !== 1 ? 's' : ''}`
+        ? `${p.doneCount}/${p.segmentCount} segments`
         : 'No segments';
       return `
         <a class="proj-item" href="#project/${p.id}">

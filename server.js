@@ -745,9 +745,18 @@ async function syncJobToProject(job) {
       });
     }
 
-    // Always assign as active and update comfyInputFilename
-    seg.generatedVideo = filename;
-    if (job.result.comfyInputFilename) seg.comfyInputFilename = job.result.comfyInputFilename;
+    // Only set as active if this job is newer than the current active video.
+    // Guards against startup sync replaying old jobs over a newer result.
+    const jobTime    = new Date(job.completedAt ?? job.queuedAt ?? 0).getTime();
+    const activeAsset = project.generatedAssets.find(a => a.filename === seg.generatedVideo);
+    const activeTime = activeAsset ? new Date(activeAsset.createdAt ?? 0).getTime() : 0;
+    if (jobTime >= activeTime) {
+      seg.generatedVideo = filename;
+      if (job.result.comfyInputFilename) seg.comfyInputFilename = job.result.comfyInputFilename;
+    } else {
+      console.log(`[server] syncJobToProject: skipping ${filename} — older than current active ${seg.generatedVideo}`);
+      return;
+    }
 
     await saveProject(project);
     console.log(`[server] synced ${filename} → ${segId} (v${version})`);

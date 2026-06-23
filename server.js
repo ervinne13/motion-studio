@@ -692,6 +692,12 @@ async function syncJobToProject(job) {
   const { segId, projectId, segmentIndex } = job.params ?? {};
   if (!segId || !projectId) return;
   try {
+    const { access } = await import('fs/promises');
+    try { await access(job.result.outputPath); } catch {
+      console.warn(`[server] syncJobToProject: output file missing at ${job.result.outputPath}, skipping segment update`);
+      return;
+    }
+
     const project  = await loadProject(projectId);
     const seg      = project.segments.find(s => s.id === segId);
     if (!seg) return;

@@ -177,6 +177,8 @@ async function renderProjectGrid() {
     return;
   }
 
+  projects.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
   projects.forEach(p => {
     const card = document.createElement('div');
     const isActive = p.id === state.project?.id;
@@ -184,7 +186,7 @@ async function renderProjectGrid() {
     card.dataset.id = p.id;
 
     const meta = [
-      p.clipCount   ? `${p.clipCount} clip${p.clipCount   !== 1 ? 's' : ''}` : null,
+      p.clipCount    ? `${p.clipCount} clip${p.clipCount !== 1 ? 's' : ''}` : null,
       p.segmentCount ? `${p.segmentCount} seg${p.segmentCount !== 1 ? 's' : ''}` : null,
     ].filter(Boolean).join(' · ') || 'empty';
 
@@ -196,7 +198,6 @@ async function renderProjectGrid() {
       </button>
     `;
 
-    // Switch to project
     card.addEventListener('click', e => {
       if (e.target.closest('.project-card-delete')) return;
       if (isActive) { closeSwitcher(); return; }
@@ -204,7 +205,6 @@ async function renderProjectGrid() {
       location.href = `/projects/${p.id}`;
     });
 
-    // Delete project
     card.querySelector('.project-card-delete').addEventListener('click', async e => {
       e.stopPropagation();
       if (!confirm(`Delete "${p.name || 'untitled'}"? This cannot be undone.`)) return;

@@ -180,6 +180,76 @@
     }
     .proj-card:hover .proj-delete { opacity: 1; }
     .proj-delete:hover { background: rgba(239,68,68,0.9); }
+
+    /* ── Sort + view controls ── */
+    .pg-controls { display: flex; align-items: center; gap: 8px; }
+    .pg-ctrl-group {
+      display: flex;
+      border: 1px solid var(--sl-color-neutral-200);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .pg-ctrl-btn {
+      padding: 5px 10px;
+      background: #fff; border: none; border-right: 1px solid var(--sl-color-neutral-200);
+      cursor: pointer; font-size: 11px; font-family: inherit;
+      color: var(--sl-color-neutral-500);
+      transition: background 0.1s, color 0.1s;
+      white-space: nowrap; display: flex; align-items: center; justify-content: center;
+    }
+    .pg-ctrl-btn:last-child { border-right: none; }
+    .pg-ctrl-btn:hover { background: var(--sl-color-neutral-50); color: var(--sl-color-neutral-700); }
+    .pg-ctrl-btn.active {
+      background: var(--sl-color-neutral-100);
+      color: var(--sl-color-neutral-900);
+      font-weight: 600;
+    }
+    .pg-ctrl-btn svg { width: 14px; height: 14px; }
+
+    /* ── List view ── */
+    .proj-grid.view-list { display: flex; flex-direction: column; gap: 4px; }
+    .proj-row {
+      display: flex; align-items: center; gap: 12px;
+      background: #fff; border: 1px solid var(--sl-color-neutral-200);
+      border-radius: 8px; padding: 8px 12px;
+      cursor: pointer; position: relative;
+      transition: border-color 0.12s, background 0.12s;
+    }
+    .proj-row:hover { border-color: var(--sl-color-primary-300); background: var(--sl-color-primary-50); }
+    .proj-row-thumb {
+      width: 36px; height: 36px; flex-shrink: 0;
+      border-radius: 5px; overflow: hidden;
+      background: var(--sl-color-neutral-100);
+    }
+    .proj-row-thumb video, .proj-row-thumb img {
+      width: 100%; height: 100%; object-fit: cover; display: block;
+    }
+    .proj-row-thumb-empty { width: 100%; height: 100%; }
+    .proj-row-name {
+      flex: 1; min-width: 0;
+      font-size: 13px; font-weight: 600; color: var(--sl-color-neutral-800);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .proj-row-meta { font-size: 11px; color: var(--sl-color-neutral-400); white-space: nowrap; flex-shrink: 0; }
+    .proj-row-modified {
+      font-size: 11px; color: var(--sl-color-neutral-400);
+      white-space: nowrap; flex-shrink: 0; min-width: 56px; text-align: right;
+    }
+    .proj-row-progress {
+      width: 56px; flex-shrink: 0;
+      height: 3px; background: var(--sl-color-neutral-100);
+      border-radius: 2px; overflow: hidden;
+    }
+    .proj-row-progress-fill { height: 100%; background: var(--sl-color-success-500); border-radius: 2px; }
+    .proj-row-delete {
+      width: 24px; height: 24px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      border: none; background: transparent; border-radius: 4px;
+      cursor: pointer; color: var(--sl-color-neutral-400); font-size: 12px;
+      opacity: 0; transition: opacity 0.1s, background 0.1s, color 0.1s;
+    }
+    .proj-row:hover .proj-row-delete { opacity: 1; }
+    .proj-row-delete:hover { background: var(--sl-color-danger-100); color: var(--sl-color-danger-600); }
   </style>
 </head>
 <body>
@@ -198,6 +268,22 @@
   <main class="pg-main">
     <div class="pg-section-header">
       <div class="pg-section-title">All Projects</div>
+      <div class="pg-controls">
+        <div class="pg-ctrl-group" id="sort-group">
+          <button class="pg-ctrl-btn" data-sort="alpha-asc">A→Z</button>
+          <button class="pg-ctrl-btn" data-sort="alpha-desc">Z→A</button>
+          <button class="pg-ctrl-btn" data-sort="modified-desc">Newest</button>
+          <button class="pg-ctrl-btn" data-sort="modified-asc">Oldest</button>
+        </div>
+        <div class="pg-ctrl-group" id="view-group">
+          <button class="pg-ctrl-btn" data-view="grid" title="Grid view">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zm0 8a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zm6-6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zm0 8a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+          </button>
+          <button class="pg-ctrl-btn" data-view="list" title="List view">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/></svg>
+          </button>
+        </div>
+      </div>
     </div>
     <div class="proj-grid" id="proj-grid">
       <div class="proj-loading">Loading…</div>

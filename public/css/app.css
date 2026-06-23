@@ -250,6 +250,22 @@ html, body {
   color: var(--sl-color-neutral-700);
 }
 
+/* ↗ View all projects link beside the switcher button */
+.proj-viewall-link {
+  display: flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px;
+  border-radius: 4px;
+  color: var(--sl-color-neutral-400);
+  text-decoration: none;
+  font-size: 13px; line-height: 1;
+  transition: background 0.1s, color 0.1s;
+  flex-shrink: 0;
+}
+.proj-viewall-link:hover {
+  background: var(--sl-color-neutral-100);
+  color: var(--sl-color-neutral-700);
+}
+
 /* Switcher panel */
 .project-switcher {
   position: absolute;
@@ -259,16 +275,16 @@ html, body {
   border: 1px solid var(--sl-color-neutral-200);
   border-radius: 10px;
   box-shadow: 0 8px 28px rgba(0,0,0,0.13);
-  padding: 12px;
+  padding: 10px;
   z-index: 100;
-  width: 340px;
+  width: 280px;
 }
 
 .switcher-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--sl-color-neutral-100);
 }
@@ -281,14 +297,16 @@ html, body {
   color: var(--sl-color-neutral-500);
 }
 
+/* List layout for project switcher */
 .project-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 .project-grid-empty {
-  grid-column: 1 / -1;
   text-align: center;
   color: var(--sl-color-neutral-400);
   font-size: 13px;
@@ -296,46 +314,48 @@ html, body {
 }
 
 .project-card {
-  position: relative;
-  padding: 10px 11px;
-  border: 1px solid var(--sl-color-neutral-200);
-  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 6px;
   cursor: pointer;
-  transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
-  background: #fff;
+  transition: background 0.1s;
+  background: transparent;
   min-width: 0;
 }
 
 .project-card:hover {
-  border-color: var(--sl-color-primary-300);
-  background: var(--sl-color-primary-50);
-  box-shadow: 0 2px 8px rgba(99,102,241,0.08);
+  background: var(--sl-color-neutral-100);
 }
 
 .project-card.active {
-  border-color: var(--sl-color-primary-500);
   background: var(--sl-color-primary-50);
+}
+.project-card.active .project-card-name {
+  color: var(--sl-color-primary-700);
 }
 
 .project-card-name {
+  flex: 1;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--sl-color-neutral-800);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding-right: 22px;
-  margin-bottom: 3px;
+  min-width: 0;
 }
 
 .project-card-meta {
   font-size: 11px;
   color: var(--sl-color-neutral-400);
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .project-card-delete {
-  position: absolute;
-  top: 7px; right: 7px;
+  flex-shrink: 0;
   width: 20px; height: 20px;
   display: flex; align-items: center; justify-content: center;
   border: none; background: transparent;

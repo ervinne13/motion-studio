@@ -1,7 +1,7 @@
 import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { readdir, rm } from 'fs/promises';
+import { readdir, rm, stat } from 'fs/promises';
 import multer from 'multer';
 import dotenv from 'dotenv';
 import { randomUUID } from 'crypto';
@@ -62,6 +62,7 @@ app.get('/api/projects', async (_req, res) => {
           : firstImage
           ? { type: 'image', url: `/media/${p.id}/uploads/${encodeURIComponent(firstImage)}` }
           : null;
+        const fileInfo = await stat(join(DATA_DIR, 'projects', id, 'project.json')).catch(() => null);
         projects.push({
           id:           p.id,
           name:         p.name || 'untitled',
@@ -70,6 +71,7 @@ app.get('/api/projects', async (_req, res) => {
           doneCount:    p.segments?.filter(s => s.generatedVideo).length ?? 0,
           mode:         p.mode,
           thumbnail,
+          updatedAt:    fileInfo?.mtime?.toISOString() ?? null,
         });
       } catch { /* skip corrupted */ }
     }

@@ -500,7 +500,11 @@ document.getElementById('btn-gen-modal-confirm').addEventListener('click', async
     const res = await fetch(`/api/project/${p.id}/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clipId: clip.id, prompt: prompt || undefined }),
+      body: JSON.stringify({
+        clipId: clip.id,
+        prompt: prompt || undefined,
+        segIds: p.segments.filter(s => s.selected).map(s => s.id),
+      }),
     });
     const data = await res.json();
     if (!res.ok) { alert(data.error || 'Failed to queue generation'); return; }

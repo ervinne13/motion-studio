@@ -14,6 +14,11 @@
     <!-- ── Header ──────────────────────────────────────────── -->
     <header class="app-header">
       <div class="header-brand">
+        <a href="/projects" class="header-back-link" title="All Projects">
+          <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+          Projects
+        </a>
+        <span class="project-divider">·</span>
         <svg class="brand-icon" viewBox="0 0 20 20" fill="currentColor">
           <path d="M2 6a2 2 0 012-2h12a2 2 0 012 2v1H2V6zm0 3h16v5a2 2 0 01-2 2H4a2 2 0 01-2-2V9zm4 2a1 1 0 000 2h8a1 1 0 000-2H6z"/>
         </svg>
@@ -180,18 +185,29 @@
 
       <!-- Center — video preview -->
       <main class="preview-panel">
-        <div class="preview-area" id="preview-area">
-          <div class="preview-placeholder" id="preview-placeholder">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="width:56px;height:56px;color:var(--sl-color-neutral-300)"><circle cx="12" cy="12" r="10"/><polygon points="10,8 16,12 10,16" fill="currentColor" stroke="none"/></svg>
-            <p>No preview — import a video to begin</p>
+        <div class="preview-compare-wrap" id="preview-compare-wrap">
+          <div class="preview-area" id="preview-area">
+            <div class="preview-placeholder" id="preview-placeholder">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="width:56px;height:56px;color:var(--sl-color-neutral-300)"><circle cx="12" cy="12" r="10"/><polygon points="10,8 16,12 10,16" fill="currentColor" stroke="none"/></svg>
+              <p>No preview — import a video to begin</p>
+            </div>
+            <video id="preview-video"     hidden playsinline></video>
+            <video id="preview-video-buf" hidden playsinline muted></video>
+            <audio id="source-audio" hidden></audio>
+            <div class="compare-overlay-label compare-label-gen" id="compare-label-gen" hidden>Generated</div>
           </div>
-          <video id="preview-video"     hidden playsinline></video>
-          <video id="preview-video-buf" hidden playsinline muted></video>
-          <audio id="source-audio" hidden></audio>
+          <div class="compare-source-area" id="compare-source-area" hidden>
+            <video id="compare-source-video" muted playsinline></video>
+            <div class="compare-overlay-label compare-label-src">Source</div>
+          </div>
         </div>
         <div class="preview-controls">
           <span class="timecode" id="timecode">00:00:00:00 / 00:00:00:00</span>
           <div class="preview-buttons">
+            <button class="tool-btn" id="btn-compare" disabled title="Compare source vs. generated">
+              <svg viewBox="0 0 20 20" fill="currentColor" style="width:14px;height:14px"><path d="M3 4a1 1 0 011-1h4a1 1 0 010 2H5.414l2.293 2.293a1 1 0 01-1.414 1.414L4 6.414V8a1 1 0 01-2 0V4zm13 0a1 1 0 00-1-1h-4a1 1 0 000 2h2.586l-2.293 2.293a1 1 0 001.414 1.414L15 6.414V8a1 1 0 002 0V4zM4 16a1 1 0 001 1h4a1 1 0 000-2H6.586l2.293-2.293a1 1 0 00-1.414-1.414L5 13.586V12a1 1 0 00-2 0v4zm13 0a1 1 0 01-1 1h-4a1 1 0 010-2h2.586l-2.293-2.293a1 1 0 011.414-1.414L15 13.586V12a1 1 0 012 0v4z"/></svg>
+              Compare
+            </button>
             <button class="tool-btn" id="btn-mute" disabled title="Mute / Unmute">
               <svg id="icon-sound" viewBox="0 0 20 20" fill="currentColor" style="width:14px;height:14px"><path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clip-rule="evenodd"/></svg>
               <svg id="icon-muted" viewBox="0 0 20 20" fill="currentColor" style="width:14px;height:14px;display:none"><path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM12.293 7.293a1 1 0 011.414 0L15 8.586l1.293-1.293a1 1 0 111.414 1.414L16.414 10l1.293 1.293a1 1 0 01-1.414 1.414L15 11.414l-1.293 1.293a1 1 0 01-1.414-1.414L13.586 10l-1.293-1.293a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
@@ -326,6 +342,35 @@
   </div>
 
   </div><!-- /app -->
+
+  <!-- Generate modal -->
+  <div id="generate-modal" class="modal-backdrop" hidden>
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="gen-modal-title">
+      <h2 class="modal-title" id="gen-modal-title">Generate Segments</h2>
+      <p class="modal-desc">Confirm settings before queuing <span id="gen-modal-count">0</span> segment(s).</p>
+      <div class="settings-form" style="gap:12px;padding:0;margin-bottom:20px">
+        <div class="field-group">
+          <label for="gen-modal-name" style="font-size:12px;font-weight:600;color:var(--sl-color-neutral-700)">Project Name</label>
+          <input class="form-control" id="gen-modal-name" type="text">
+        </div>
+        <div class="field-group">
+          <label for="gen-modal-mode" style="font-size:12px;font-weight:600;color:var(--sl-color-neutral-700)">Generation Mode</label>
+          <select class="form-control" id="gen-modal-mode">
+            <option value="subject-replacement">Subject Replacement</option>
+            <option value="motion-capture">Motion Capture</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label for="gen-modal-prompt" style="font-size:12px;font-weight:600;color:var(--sl-color-neutral-700)">Prompt</label>
+          <textarea class="form-control" id="gen-modal-prompt" rows="3" placeholder="Describe the generation for this batch…"></textarea>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn-cancel" id="btn-gen-modal-cancel">Cancel</button>
+        <button class="btn btn-primary" id="btn-gen-modal-confirm">Generate →</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Export modal -->
   <div id="export-modal" class="modal-backdrop" hidden>

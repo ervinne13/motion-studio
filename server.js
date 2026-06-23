@@ -23,6 +23,11 @@ const PORT = process.env.PORT || 3001;
 const DATA_DIR = process.env.DATA_DIR || './data';
 
 app.use(express.json());
+
+// Projects grid page — must come before express.static so / doesn't fall through to index.html
+app.get('/',        (_req, res) => res.sendFile(join(__dirname, 'public', 'projects.html')));
+app.get('/projects', (_req, res) => res.sendFile(join(__dirname, 'public', 'projects.html')));
+
 app.use(express.static(join(__dirname, 'public')));
 app.use('/shoelace', express.static(join(__dirname, 'node_modules/@shoelace-style/shoelace/dist')));
 
@@ -47,6 +52,16 @@ app.get('/api/projects', async (_req, res) => {
     for (const id of entries) {
       try {
         const p = await loadProject(id);
+        const genAssets  = p.generatedAssets ?? [];
+        const sortedGen  = [...genAssets].sort((a, b) => (a.segmentIndex ?? 0) - (b.segmentIndex ?? 0));
+        const firstGen   = sortedGen[0];
+        const clipNames  = new Set((p.sourceClips ?? []).map(c => c.filename));
+        const firstImage = (p.assets ?? []).find(a => !clipNames.has(a));
+        const thumbnail  = firstGen
+          ? { type: 'video', url: `/media/${p.id}/generated/${encodeURIComponent(firstGen.filename)}` }
+          : firstImage
+          ? { type: 'image', url: `/media/${p.id}/uploads/${encodeURIComponent(firstImage)}` }
+          : null;
         projects.push({
           id:           p.id,
           name:         p.name || 'untitled',
@@ -54,6 +69,7 @@ app.get('/api/projects', async (_req, res) => {
           segmentCount: p.segments?.length     ?? 0,
           doneCount:    p.segments?.filter(s => s.generatedVideo).length ?? 0,
           mode:         p.mode,
+          thumbnail,
         });
       } catch { /* skip corrupted */ }
     }

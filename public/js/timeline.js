@@ -331,13 +331,43 @@ function drawSegments() {
       ctx.strokeRect(x + 1, genY + 2, w - 2, rh - 4);
       ctx.setLineDash([]);
       ctx.globalAlpha = 1;
-      if (w > 20) {
-        ctx.fillStyle = isGenHide ? '#9ca3af' : '#15803d';
-        ctx.font = '10px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
+      // Eye icon (right side of segment, 20px wide hit zone)
+      const eyeAreaW = 20;
+      const eyeRight = Math.min(x + w - 1, W - 1);
+      const eyeLeft  = eyeRight - eyeAreaW;
+      if (eyeRight > Math.max(x, 0) && w > 30) {
+        const eyeCx = eyeLeft + eyeAreaW / 2;
+        const eyeCy = genY + rh / 2;
         ctx.save();
         ctx.rect(Math.max(x, 0), genY, Math.min(w, W - Math.max(x, 0)), rh);
         ctx.clip();
-        ctx.fillText(isGenHide ? '○ hidden' : 'Generated', Math.max(x + w / 2, 10), genY + rh / 2);
+        const eyeColor = isGenHide ? '#9ca3af' : '#15803d';
+        ctx.strokeStyle = eyeColor; ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.ellipse(eyeCx, eyeCy, 5.5, 3.5, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = eyeColor;
+        ctx.beginPath();
+        ctx.arc(eyeCx, eyeCy, 2, 0, Math.PI * 2);
+        ctx.fill();
+        if (isGenHide) {
+          ctx.strokeStyle = eyeColor; ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(eyeCx - 6, eyeCy + 4);
+          ctx.lineTo(eyeCx + 6, eyeCy - 4);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      if (w > 40) {
+        ctx.fillStyle = isGenHide ? '#9ca3af' : '#15803d';
+        ctx.font = '10px system-ui'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.save();
+        ctx.rect(Math.max(x, 0), genY, Math.min(w - eyeAreaW - 2, W - Math.max(x, 0)), rh);
+        ctx.clip();
+        ctx.fillText('Generated', Math.max(x, 0) + 4, genY + rh / 2);
         ctx.restore();
       }
     } else if (jobStatus === 'running') {
@@ -576,7 +606,7 @@ canvas.addEventListener('mousemove', e => {
   const rowIdx = Math.floor(e.offsetY / rh);
   const tlFrame = Math.floor((e.offsetX + scrollX) / ppf());
   const seg = segLayout.find(s => tlFrame >= s.timelineStart && tlFrame < s.timelineStart + s.frameCount);
-  if ((rowIdx === 0 && seg?.generatedVideo) || (rowIdx === 2 && seg)) {
+  if ((rowIdx === 0 && (seg?.generatedVideo || _jobsBySegId.has(seg?.id))) || (rowIdx === 2 && seg)) {
     canvas.style.cursor = 'pointer';
   } else {
     canvas.style.cursor = 'crosshair';
@@ -625,9 +655,21 @@ canvas.addEventListener('click', e => {
   );
   if (!seg) return;
 
-  if (rowIdx === 0 && seg.generatedVideo) {
-    // Gen row — toggle overlay visibility for this segment
-    document.dispatchEvent(new CustomEvent('segment:togglegen', { detail: { segId: seg.id } }));
+  if (rowIdx === 0) {
+    if (seg.generatedVideo) {
+      // Check if click is on the eye icon area (right 20px of visible segment)
+      const segW     = seg.frameCount * ppf();
+      const segEndX  = Math.min(seg.timelineStart * ppf() - scrollX + segW, W);
+      const eyeHitX  = segEndX - 20;
+      if (e.offsetX >= eyeHitX && segW > 30) {
+        document.dispatchEvent(new CustomEvent('segment:togglegen', { detail: { segId: seg.id } }));
+      } else {
+        document.dispatchEvent(new CustomEvent('segment:showjob', { detail: { segId: seg.id } }));
+      }
+    } else if (_jobsBySegId.has(seg.id)) {
+      // Pending/running/waiting job — clicking shows the job
+      document.dispatchEvent(new CustomEvent('segment:showjob', { detail: { segId: seg.id } }));
+    }
     return;
   }
 

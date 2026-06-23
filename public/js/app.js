@@ -86,6 +86,7 @@ function applyProject() {
   updateGenerateButton();
   if (p.sourceClips.length > 0) {
     playerBuildPlaylist(p.segments, p.id, p.sourceClips);
+    document.getElementById('btn-compare').disabled = false;
   }
   updateExportButton();
 }
@@ -440,11 +441,54 @@ function updateGenerateButton() {
   btn.disabled    = n === 0;
 }
 
-document.getElementById('btn-generate').addEventListener('click', async () => {
+document.getElementById('btn-generate').addEventListener('click', () => {
+  const p = state.project;
+  if (!p) return;
+  const n = p.segments.filter(s => s.selected).length;
+  if (n === 0) return;
+
+  // Pre-fill modal from current project state
+  document.getElementById('gen-modal-name').value   = p.name || 'untitled';
+  document.getElementById('gen-modal-mode').value   = p.mode || 'subject-replacement';
+  document.getElementById('gen-modal-prompt').value = p.defaultPrompt || '';
+  document.getElementById('gen-modal-count').textContent = n;
+  document.getElementById('generate-modal').hidden  = false;
+  document.getElementById('gen-modal-prompt').focus();
+});
+
+document.getElementById('btn-gen-modal-cancel').addEventListener('click', () => {
+  document.getElementById('generate-modal').hidden = true;
+});
+
+document.getElementById('generate-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('generate-modal'))
+    document.getElementById('generate-modal').hidden = true;
+});
+
+document.getElementById('btn-gen-modal-confirm').addEventListener('click', async () => {
   const p = state.project;
   if (!p) return;
   const clip = p.sourceClips[0];
   if (!clip) return;
+
+  const name   = document.getElementById('gen-modal-name').value.trim() || 'untitled';
+  const mode   = document.getElementById('gen-modal-mode').value;
+  const prompt = document.getElementById('gen-modal-prompt').value.trim();
+
+  document.getElementById('generate-modal').hidden = true;
+
+  // Save project name/mode if changed
+  const updates = {};
+  if (name !== (p.name || 'untitled'))            updates.name = name;
+  if (mode !== (p.mode || 'subject-replacement')) updates.mode = mode;
+  if (Object.keys(updates).length > 0) {
+    const pr = await fetch(`/api/project/${p.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    if (pr.ok) { const { project } = await pr.json(); state.project = project; applyProject(); }
+  }
 
   // Switch to logs panel
   document.querySelectorAll('.rail-btn').forEach(b => b.classList.remove('active'));
@@ -456,12 +500,10 @@ document.getElementById('btn-generate').addEventListener('click', async () => {
     const res = await fetch(`/api/project/${p.id}/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clipId: clip.id }),
+      body: JSON.stringify({ clipId: clip.id, prompt: prompt || undefined }),
     });
     const data = await res.json();
     if (!res.ok) { alert(data.error || 'Failed to queue generation'); return; }
-    // data.jobs is an array — one entry per segment, in order
-    // Render newest-batch at top: prepend in reverse so seg1 ends up on top
     [...data.jobs].reverse().forEach(watchJob);
   } catch (e) {
     console.error('Generate error:', e);
@@ -1210,6 +1252,64 @@ document.getElementById('btn-apply-qwen')?.addEventListener('click', async () =>
     btn.disabled = false;
     btn.textContent = 'Apply with Qwen →';
   }
+});
+
+// ── Compare toggle ─────────────────────────────────────────────
+let _compareMode = false;
+const _compareWrap  = document.getElementById('preview-compare-wrap');
+const _compareSrc   = document.getElementById('compare-source-area');
+const _compareVid   = document.getElementById('compare-source-video');
+const _compareLabelGen = document.getElementById('compare-label-gen');
+const _btnCompare   = document.getElementById('btn-compare');
+
+document.getElementById('btn-compare').addEventListener('click', () => {
+  _compareMode = !_compareMode;
+  _btnCompare.classList.toggle('active', _compareMode);
+  _compareSrc.hidden        = !_compareMode;
+  _compareLabelGen.hidden   = !_compareMode;
+
+  if (_compareMode) {
+    // Detect orientation from the current video element
+    const vid = document.getElementById('preview-video');
+    const isLandscape = vid.videoWidth > 0 && vid.videoWidth >= vid.videoHeight;
+    _compareWrap.classList.toggle('compare-landscape', isLandscape);
+  }
+});
+
+document.addEventListener('player:timeupdate', e => {
+  if (!_compareMode) return;
+  const { currentTime, clipId } = e.detail;
+  const p = state.project;
+  if (!p) return;
+  const clip = p.sourceClips.find(c => c.id === clipId);
+  if (!clip) return;
+
+  const srcUrl = `/media/${p.id}/uploads/${encodeURIComponent(clip.filename)}`;
+  const targetSrc = new URL(srcUrl, location.href).href;
+
+  if (!_compareVid.src || new URL(_compareVid.src, location.href).href !== targetSrc) {
+    _compareVid.src = srcUrl;
+    _compareVid.addEventListener('loadedmetadata', () => {
+      _compareVid.currentTime = currentTime;
+    }, { once: true });
+  } else if (Math.abs(_compareVid.currentTime - currentTime) > 0.5) {
+    _compareVid.currentTime = currentTime;
+  }
+
+  const mainVid = document.getElementById('preview-video');
+  if (!mainVid.paused && _compareVid.paused) _compareVid.play().catch(() => {});
+  if (mainVid.paused && !_compareVid.paused) _compareVid.pause();
+});
+
+// ── Segment → show its job in the right panel ──────────────────
+document.addEventListener('segment:showjob', e => {
+  const { segId } = e.detail;
+  // Find the most recent job that produced or is producing this segment
+  const segJobs = [..._jobs.values()]
+    .filter(j => j.params?.segId === segId)
+    .sort((a, b) => new Date(b.queuedAt ?? 0) - new Date(a.queuedAt ?? 0));
+  const job = segJobs[0];
+  if (job) showJobInPanel(job.id);
 });
 
 // ── Export button ──────────────────────────────────────────────

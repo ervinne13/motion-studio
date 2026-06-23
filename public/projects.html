@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Motion Studio — Projects</title>
+  <link rel="stylesheet" href="/shoelace/themes/light.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html, body {
+      margin: 0; padding: 0; height: 100%;
+      font-family: var(--sl-font-sans);
+      font-size: 13px;
+      background: var(--sl-color-neutral-50);
+      color: var(--sl-color-neutral-900);
+    }
+
+    /* ── Header ── */
+    .pg-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      height: 48px;
+      background: #fff;
+      border-bottom: 1px solid var(--sl-color-neutral-200);
+      position: sticky; top: 0; z-index: 10;
+    }
+    .pg-brand {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 15px; font-weight: 700;
+      color: var(--sl-color-neutral-900);
+    }
+    .pg-brand svg { width: 20px; height: 20px; color: var(--sl-color-primary-600); flex-shrink: 0; }
+    .pg-title {
+      font-size: 13px; font-weight: 600;
+      color: var(--sl-color-neutral-500);
+      letter-spacing: 0.02em;
+    }
+    .pg-brand-sep { color: var(--sl-color-neutral-300); font-weight: 400; }
+
+    /* ── Main content ── */
+    .pg-main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 28px 24px;
+    }
+
+    .pg-section-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .pg-section-title {
+      font-size: 18px; font-weight: 700;
+      color: var(--sl-color-neutral-900);
+    }
+
+    /* ── Button ── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+      padding: 6px 14px;
+      border: 1px solid var(--sl-color-neutral-300);
+      background: #fff; border-radius: 6px;
+      font-size: 13px; font-weight: 500; font-family: inherit;
+      cursor: pointer; color: var(--sl-color-neutral-700);
+      white-space: nowrap; line-height: 1.4; text-decoration: none;
+      transition: background 0.1s, border-color 0.1s;
+    }
+    .btn:hover { background: var(--sl-color-neutral-100); border-color: var(--sl-color-neutral-400); }
+    .btn-primary {
+      background: var(--sl-color-primary-600); border-color: var(--sl-color-primary-600); color: #fff;
+    }
+    .btn-primary:hover { background: var(--sl-color-primary-700); border-color: var(--sl-color-primary-700); }
+
+    /* ── Project grid ── */
+    .proj-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px;
+    }
+
+    .proj-empty {
+      grid-column: 1 / -1;
+      text-align: center;
+      color: var(--sl-color-neutral-400);
+      padding: 60px 0;
+      font-size: 14px;
+    }
+
+    .proj-loading {
+      grid-column: 1 / -1;
+      text-align: center;
+      color: var(--sl-color-neutral-400);
+      padding: 60px 0;
+      font-size: 14px;
+    }
+
+    .proj-card {
+      background: #fff;
+      border: 1px solid var(--sl-color-neutral-200);
+      border-radius: 10px;
+      overflow: hidden;
+      cursor: pointer;
+      position: relative;
+      transition: box-shadow 0.15s, border-color 0.15s, transform 0.12s;
+      display: flex;
+      flex-direction: column;
+    }
+    .proj-card:hover {
+      border-color: var(--sl-color-primary-300);
+      box-shadow: 0 4px 16px rgba(99,102,241,0.12);
+      transform: translateY(-2px);
+    }
+
+    .proj-thumb-wrap {
+      aspect-ratio: 9/16;
+      background: var(--sl-color-neutral-100);
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .proj-thumb-wrap video,
+    .proj-thumb-wrap img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .proj-thumb-empty {
+      width: 100%; height: 100%;
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 8px;
+      color: var(--sl-color-neutral-300);
+      font-size: 12px;
+    }
+    .proj-thumb-empty svg { width: 36px; height: 36px; }
+
+    .proj-info {
+      padding: 10px 12px 12px;
+      flex: 1;
+    }
+    .proj-name {
+      font-size: 13px; font-weight: 600;
+      color: var(--sl-color-neutral-800);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      margin-bottom: 3px;
+    }
+    .proj-meta {
+      font-size: 11px;
+      color: var(--sl-color-neutral-400);
+    }
+    .proj-progress {
+      margin-top: 8px;
+      height: 3px;
+      background: var(--sl-color-neutral-100);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .proj-progress-fill {
+      height: 100%;
+      background: var(--sl-color-success-500);
+      border-radius: 2px;
+      transition: width 0.3s;
+    }
+
+    .proj-delete {
+      position: absolute;
+      top: 8px; right: 8px;
+      width: 24px; height: 24px;
+      display: flex; align-items: center; justify-content: center;
+      border: none; background: rgba(0,0,0,0.35);
+      border-radius: 50%; cursor: pointer;
+      color: #fff; font-size: 12px; line-height: 1;
+      opacity: 0;
+      transition: opacity 0.1s, background 0.1s;
+    }
+    .proj-card:hover .proj-delete { opacity: 1; }
+    .proj-delete:hover { background: rgba(239,68,68,0.9); }
+  </style>
+</head>
+<body>
+  <header class="pg-header">
+    <div class="pg-brand">
+      <svg viewBox="0 0 20 20" fill="currentColor">
+        <path d="M2 6a2 2 0 012-2h12a2 2 0 012 2v1H2V6zm0 3h16v5a2 2 0 01-2 2H4a2 2 0 01-2-2V9zm4 2a1 1 0 000 2h8a1 1 0 000-2H6z"/>
+      </svg>
+      <span class="brand-name">Motion Studio</span>
+      <span class="pg-brand-sep">·</span>
+      <span class="pg-title">Projects</span>
+    </div>
+    <button class="btn btn-primary" id="btn-new-project">+ New Project</button>
+  </header>
+
+  <main class="pg-main">
+    <div class="pg-section-header">
+      <div class="pg-section-title">All Projects</div>
+    </div>
+    <div class="proj-grid" id="proj-grid">
+      <div class="proj-loading">Loading…</div>
+    </div>
+  </main>
+
+  <script type="module" src="/js/projects.js"></script>
+</body>
+</html>

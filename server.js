@@ -424,6 +424,7 @@ app.post('/api/project/:id/generate', async (req, res) => {
     const clipSegs = allClipSegs.filter(s =>
       segIds ? segIds.includes(s.id) : s.selected
     );
+    console.log(`[generate] project=${id} segIds=${JSON.stringify(segIds)} allClipSegs=${allClipSegs.length} clipSegs=${clipSegs.length} → segments: ${clipSegs.map(s => s.id.slice(0,8)).join(', ')}`);
 
     let lastRef   = defaultRef;
     const jobs    = [];

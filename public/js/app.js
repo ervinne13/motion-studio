@@ -388,7 +388,8 @@ function showAssetInPanel(name, src, itemEl) {
   itemEl?.classList.add('active');
 
   _clearElapsedTimer();
-  // Hide frame props, show asset props
+  // Hide all other panels, show asset props
+  document.getElementById('job-props').hidden           = true;
   document.getElementById('frame-props-empty').hidden   = true;
   document.getElementById('frame-props-content').hidden = true;
   document.getElementById('asset-props').hidden         = false;
@@ -921,6 +922,7 @@ document.addEventListener('frame:select', async e => {
   state.selectedFrame = { clipId, frameIndex };
 
   document.querySelectorAll('.asset-item.active').forEach(el => el.classList.remove('active'));
+  document.getElementById('job-props').hidden           = true;
   document.getElementById('asset-props').hidden         = true;
   document.getElementById('right-panel-title').textContent = 'Frame Properties';
   document.getElementById('frame-props-empty').hidden   = true;

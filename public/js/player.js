@@ -281,6 +281,21 @@ video.addEventListener('ended', () => {
   }
 });
 
+// ── Fullscreen ─────────────────────────────────────────────────
+document.getElementById('btn-fullscreen')?.addEventListener('click', () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else previewArea.requestFullscreen?.();
+});
+document.addEventListener('fullscreenchange', () => {
+  const btn = document.getElementById('btn-fullscreen');
+  if (!btn) return;
+  const inFs = !!document.fullscreenElement;
+  btn.title = inFs ? 'Exit fullscreen' : 'Fullscreen';
+  btn.querySelector('svg').innerHTML = inFs
+    ? '<path fill-rule="evenodd" d="M5 4a1 1 0 00-1 1v2a1 1 0 01-2 0V5a3 3 0 013-3h2a1 1 0 010 2H5zm10 0h-2a1 1 0 010-2h2a3 3 0 013 3v2a1 1 0 01-2 0V5a1 1 0 00-1-1zM4 15a1 1 0 001 1h2a1 1 0 010 2H5a3 3 0 01-3-3v-2a1 1 0 012 0v2zm12 1a1 1 0 001-1v-2a1 1 0 012 0v2a3 3 0 01-3 3h-2a1 1 0 010-2h2z" clip-rule="evenodd"/>'
+    : '<path fill-rule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H5.414l2.293 2.293a1 1 0 01-1.414 1.414L4 6.414V8a1 1 0 01-2 0V4zm13 0a1 1 0 00-1-1h-4a1 1 0 000 2h2.586l-2.293 2.293a1 1 0 001.414 1.414L15 6.414V8a1 1 0 002 0V4zM4 16a1 1 0 001 1h4a1 1 0 000-2H6.586l2.293-2.293a1 1 0 00-1.414-1.414L5 13.586V12a1 1 0 00-2 0v4zm13 0a1 1 0 01-1 1h-4a1 1 0 010-2h2.586l-2.293-2.293a1 1 0 011.414-1.414L15 13.586V12a1 1 0 012 0v4z" clip-rule="evenodd"/>';
+});
+
 // ── Mute ───────────────────────────────────────────────────────
 btnMute.addEventListener('click', () => {
   video.muted       = !video.muted;

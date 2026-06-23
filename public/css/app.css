@@ -86,6 +86,7 @@ html, body {
   height: 100vh;
   overflow: hidden;
 }
+.timeline-section { min-height: 270px; }
 
 /* ─── Header back link ────────────────────────────────────────── */
 .header-back-link {
@@ -127,7 +128,7 @@ html, body {
   justify-content: center;
   flex: 1;
   min-width: 0;
-  background: var(--sl-color-neutral-900);
+  background: var(--sl-color-neutral-100);
   border-left: 2px solid var(--sl-color-neutral-300);
   position: relative;
   padding: 16px;

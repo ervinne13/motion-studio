@@ -1282,6 +1282,14 @@ document.getElementById('btn-compare').addEventListener('click', () => {
   }
 });
 
+// Sync pause/play to compare source — timeupdate doesn't fire while paused
+document.getElementById('preview-video')?.addEventListener('pause', () => {
+  if (_compareMode) _compareVid.pause();
+});
+document.getElementById('preview-video')?.addEventListener('play', () => {
+  if (_compareMode) _compareVid.play().catch(() => {});
+});
+
 document.addEventListener('player:timeupdate', e => {
   if (!_compareMode) return;
   const { currentTime, clipId } = e.detail;

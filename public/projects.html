@@ -205,6 +205,12 @@
       font-weight: 600;
     }
     .pg-ctrl-btn svg { width: 14px; height: 14px; }
+    #btn-show-archived.active {
+      background: var(--sl-color-neutral-100);
+      color: var(--sl-color-neutral-900);
+      font-weight: 600;
+      border-color: var(--sl-color-neutral-300);
+    }
 
     /* ── List view ── */
     .proj-grid.view-list { display: flex; flex-direction: column; gap: 4px; }
@@ -250,6 +256,43 @@
     }
     .proj-row:hover .proj-row-delete { opacity: 1; }
     .proj-row-delete:hover { background: var(--sl-color-danger-100); color: var(--sl-color-danger-600); }
+
+    /* ── Archive button (card) ── */
+    .proj-archive {
+      position: absolute;
+      top: 8px; right: 36px;
+      width: 24px; height: 24px;
+      display: flex; align-items: center; justify-content: center;
+      border: none; background: rgba(0,0,0,0.35);
+      border-radius: 50%; cursor: pointer; color: #fff;
+      opacity: 0; transition: opacity 0.1s, background 0.1s;
+    }
+    .proj-archive svg { width: 13px; height: 13px; }
+    .proj-card:hover .proj-archive { opacity: 1; }
+    .proj-archive:hover { background: rgba(99,102,241,0.85); }
+
+    /* ── Archive button (row) ── */
+    .proj-row-archive {
+      width: 24px; height: 24px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      border: none; background: transparent; border-radius: 4px;
+      cursor: pointer; color: var(--sl-color-neutral-400);
+      opacity: 0; transition: opacity 0.1s, background 0.1s, color 0.1s;
+    }
+    .proj-row-archive svg { width: 13px; height: 13px; }
+    .proj-row:hover .proj-row-archive { opacity: 1; }
+    .proj-row-archive:hover { background: var(--sl-color-primary-100); color: var(--sl-color-primary-600); }
+
+    /* ── Archived badge on card ── */
+    .proj-archived-badge {
+      display: inline-block;
+      font-size: 10px; font-weight: 600;
+      padding: 1px 6px; border-radius: 10px;
+      background: var(--sl-color-neutral-100);
+      color: var(--sl-color-neutral-500);
+      margin-top: 4px;
+      letter-spacing: 0.04em;
+    }
   </style>
 </head>
 <body>
@@ -283,6 +326,10 @@
             <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/></svg>
           </button>
         </div>
+        <button class="pg-ctrl-btn" id="btn-show-archived" title="Show archived projects" style="border:1px solid var(--sl-color-neutral-200);border-radius:6px;gap:5px">
+          <svg viewBox="0 0 20 20" fill="currentColor" style="width:13px;height:13px"><path d="M4 3a2 2 0 100 4h12a2 2 0 100-4H4zM3 8h14v7a2 2 0 01-2 2H5a2 2 0 01-2-2V8zm5 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z"/></svg>
+          Archived <span id="archived-count" hidden></span>
+        </button>
       </div>
     </div>
     <div class="proj-grid" id="proj-grid">

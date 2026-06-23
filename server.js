@@ -44,14 +44,19 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // ── Projects list ──────────────────────────────────────────────
-app.get('/api/projects', async (_req, res) => {
+app.get('/api/projects', async (req, res) => {
   const dir = join(DATA_DIR, 'projects');
+  const wantArchived = req.query.archived === 'true';
   try {
     const entries = await readdir(dir);
     const projects = [];
+    let archivedCount = 0;
     for (const id of entries) {
       try {
         const p = await loadProject(id);
+        const isArchived = p.archived === true;
+        if (isArchived) archivedCount++;
+        if (isArchived !== wantArchived) continue;
         const genAssets  = p.generatedAssets ?? [];
         const sortedGen  = [...genAssets].sort((a, b) => (a.segmentIndex ?? 0) - (b.segmentIndex ?? 0));
         const firstGen   = sortedGen[0];
@@ -75,9 +80,9 @@ app.get('/api/projects', async (_req, res) => {
         });
       } catch { /* skip corrupted */ }
     }
-    res.json({ projects });
+    res.json({ projects, archivedCount: wantArchived ? undefined : archivedCount });
   } catch {
-    res.json({ projects: [] });
+    res.json({ projects: [], archivedCount: 0 });
   }
 });
 
@@ -102,7 +107,7 @@ app.patch('/api/project/:id', async (req, res) => {
   const { id } = req.params;
   try {
     const project = await loadProject(id);
-    const allowed = ['name', 'mode', 'fps', 'aspectRatio', 'defaultPrompt', 'defaultSeed', 'genFps', 'genFramesPerSegment'];
+    const allowed = ['name', 'mode', 'fps', 'aspectRatio', 'defaultPrompt', 'defaultSeed', 'genFps', 'genFramesPerSegment', 'archived'];
     allowed.forEach(k => { if (req.body[k] !== undefined) project[k] = req.body[k]; });
 
     // Recompute segment boundaries when generation settings change,

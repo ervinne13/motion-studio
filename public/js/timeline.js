@@ -263,15 +263,16 @@ function drawSegments() {
 
     // Label (only if there's enough room)
     if (w > 40) {
-      const clip    = project.sourceClips?.find(c => c.id === seg.sourceClipId);
-      const fpsTag  = clip?.fps ? ` ${clip.fps}fps` : '';
+      const clip        = project.sourceClips?.find(c => c.id === seg.sourceClipId);
+      const genFps      = project.genFps ?? 24;
+      const genFrames   = clip?.fps ? Math.round(seg.frameCount / clip.fps * genFps) : (project.genFramesPerSegment ?? 81);
       ctx.fillStyle = '#374151';
       ctx.font = `11px system-ui, sans-serif`;
       ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       ctx.save();
       ctx.rect(Math.max(x, 0), segY, Math.min(w, W - Math.max(x, 0)), rh);
       ctx.clip();
-      ctx.fillText(`seg ${idx + 1}${fpsTag}`, Math.max(x, 0) + 20, segY + rh / 2);
+      ctx.fillText(`Segment ${idx + 1} . ${genFps}fps . ${genFrames} Frames`, Math.max(x, 0) + 20, segY + rh / 2);
       ctx.restore();
     }
 

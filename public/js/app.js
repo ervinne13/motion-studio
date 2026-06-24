@@ -815,6 +815,8 @@ async function onJobDone(job) {
   renderAssetList();
   if (p.sourceClips.length > 0) playerBuildPlaylist(project.segments, project.id, project.sourceClips);
   updateExportButton();
+  const segNum = (job.params?.segmentIndex ?? 0) + 1;
+  showToast(`Segment ${segNum} generation complete`, 'success');
 }
 
 // ── Job detail in right panel ──────────────────────────────────

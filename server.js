@@ -11,10 +11,10 @@ dotenv.config();
 import { probeVideo, extractFrameRange, concatVideos, mixAudio, convertFps, splitVideoAtFrame, hasAudioStream } from './lib/video.js';
 import { basename } from 'path';
 import {
-  createProject, loadProject, saveProject,
+  createProject, loadProject, saveProject, withProjectLock,
   computeSegments, uploadsDir, thumbsDir, projectDir,
 } from './lib/project.js';
-import { enqueue, getJob, getTodayJobs, subscribeJob, subscribeAll, cancelJob, forceRelease, resumeOnStartup } from './lib/queue.js';
+import { enqueue, getJob, getTodayJobs, getAllDoneJobs, subscribeJob, subscribeAll, cancelJob, forceRelease, resumeOnStartup } from './lib/queue.js';
 import { generateQwenEdit } from './lib/generate.js';
 import { uploadVideo as comfyUploadVideo } from './lib/comfyui.js';
 
@@ -113,22 +113,23 @@ app.get('/api/project/:id', async (req, res) => {
 app.patch('/api/project/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    const project = await loadProject(id);
-    const allowed = ['name', 'mode', 'fps', 'aspectRatio', 'defaultPrompt', 'defaultSeed', 'genFps', 'genFramesPerSegment', 'archived'];
-    allowed.forEach(k => { if (req.body[k] !== undefined) project[k] = req.body[k]; });
+    const project = await withProjectLock(id, async () => {
+      const project = await loadProject(id);
+      const allowed = ['name', 'mode', 'fps', 'aspectRatio', 'defaultPrompt', 'defaultSeed', 'genFps', 'genFramesPerSegment', 'archived'];
+      allowed.forEach(k => { if (req.body[k] !== undefined) project[k] = req.body[k]; });
 
-    // Recompute segment boundaries when generation settings change,
-    // but only for clips that already have segments (assets-only clips stay out)
-    if (req.body.genFps !== undefined || req.body.genFramesPerSegment !== undefined) {
-      const genFps  = project.genFps  || 24;
-      const genFrms = project.genFramesPerSegment || 81;
-      const clipsWithSegs = new Set(project.segments.map(s => s.sourceClipId));
-      project.segments = project.sourceClips
-        .filter(clip => clipsWithSegs.has(clip.id))
-        .flatMap(clip => computeSegments(clip.id, clip.totalFrames, clip.fps, genFps, genFrms));
-    }
+      if (req.body.genFps !== undefined || req.body.genFramesPerSegment !== undefined) {
+        const genFps  = project.genFps  || 24;
+        const genFrms = project.genFramesPerSegment || 81;
+        const clipsWithSegs = new Set(project.segments.map(s => s.sourceClipId));
+        project.segments = project.sourceClips
+          .filter(clip => clipsWithSegs.has(clip.id))
+          .flatMap(clip => computeSegments(clip.id, clip.totalFrames, clip.fps, genFps, genFrms));
+      }
 
-    await saveProject(project);
+      await saveProject(project);
+      return project;
+    });
     res.json({ project });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -152,22 +153,24 @@ app.post('/api/project/:id/upload', upload.single('file'), async (req, res) => {
   if (!file) return res.status(400).json({ error: 'No file' });
 
   try {
-    const project  = await loadProject(id);
     const isVideo  = file.mimetype.startsWith('video/');
     const filePath = join(uploadsDir(id), file.originalname);
 
-    if (isVideo) {
-      const { fps, totalFrames } = await probeVideo(filePath);
-      const clipId = `clip-${randomUUID().slice(0, 8)}`;
-      project.sourceClips.push({ id: clipId, filename: file.originalname, fps, totalFrames });
-      if (project.sourceClips.length === 1) project.fps = fps;
-    }
+    // Probe video outside the lock (can be slow)
+    let videoMeta = null;
+    if (isVideo) videoMeta = await probeVideo(filePath);
 
-    if (!project.assets.includes(file.originalname)) {
-      project.assets.push(file.originalname);
-    }
-
-    await saveProject(project);
+    const project = await withProjectLock(id, async () => {
+      const project = await loadProject(id);
+      if (isVideo) {
+        const clipId = `clip-${randomUUID().slice(0, 8)}`;
+        project.sourceClips.push({ id: clipId, filename: file.originalname, fps: videoMeta.fps, totalFrames: videoMeta.totalFrames });
+        if (project.sourceClips.length === 1) project.fps = videoMeta.fps;
+      }
+      if (!project.assets.includes(file.originalname)) project.assets.push(file.originalname);
+      await saveProject(project);
+      return project;
+    });
     res.json({ project, filename: file.originalname, isVideo });
   } catch (e) {
     console.error(e);
@@ -234,39 +237,49 @@ async function repairClipAudio(clipPath) {
 app.post('/api/project/:id/clips/:clipId/segments', async (req, res) => {
   const { id, clipId } = req.params;
   try {
-    const project = await loadProject(id);
-    const clip = project.sourceClips.find(c => c.id === clipId);
-    if (!clip) return res.status(404).json({ error: 'Clip not found' });
-    const genFps  = project.genFps  || 24;
-    const genFrms = project.genFramesPerSegment || 81;
+    // Read clip info outside the lock so we can do slow FPS conversion without blocking saves
+    const projectSnap = await loadProject(id);
+    const clipSnap = projectSnap.sourceClips.find(c => c.id === clipId);
+    if (!clipSnap) return res.status(404).json({ error: 'Clip not found' });
 
-    const clipPath = join(uploadsDir(id), clip.filename);
+    const genFps  = projectSnap.genFps  || 24;
+    const genFrms = projectSnap.genFramesPerSegment || 81;
+    const clipPath = join(uploadsDir(id), clipSnap.filename);
 
-    // Repair audio on clips that were previously converted with -an (old bug)
     await repairClipAudio(clipPath).catch(() => {});
 
-    // Convert clip to project genFps if the source FPS differs (prevents lip-sync drift)
-    if (Math.abs(clip.fps - genFps) > 0.01) {
+    // FPS conversion is slow — do it outside the lock
+    let convResult = null;
+    if (Math.abs(clipSnap.fps - genFps) > 0.01) {
       try {
-        const dotIdx  = clip.filename.lastIndexOf('.');
-        const base    = dotIdx >= 0 ? clip.filename.slice(0, dotIdx) : clip.filename;
-        const ext     = dotIdx >= 0 ? clip.filename.slice(dotIdx) : '.mp4';
+        const dotIdx  = clipSnap.filename.lastIndexOf('.');
+        const base    = dotIdx >= 0 ? clipSnap.filename.slice(0, dotIdx) : clipSnap.filename;
+        const ext     = dotIdx >= 0 ? clipSnap.filename.slice(dotIdx) : '.mp4';
         const newName = `${base}_${genFps}fps${ext}`;
         const newPath = join(uploadsDir(id), newName);
         await convertFps(clipPath, newPath, genFps);
         const { fps: newFps, totalFrames: newTotal } = await probeVideo(newPath);
-        clip.filename    = newName;
-        clip.fps         = newFps;
-        clip.totalFrames = newTotal;
-        if (!project.assets.includes(newName)) project.assets.push(newName);
+        convResult = { newName, newFps, newTotal };
       } catch (convErr) {
         console.warn('[segments] FPS conversion failed, using original:', convErr.message);
       }
     }
 
-    const newSegs = computeSegments(clipId, clip.totalFrames, clip.fps, genFps, genFrms);
-    project.segments.push(...newSegs);
-    await saveProject(project);
+    const project = await withProjectLock(id, async () => {
+      const project = await loadProject(id);
+      const clip = project.sourceClips.find(c => c.id === clipId);
+      if (!clip) throw new Error('Clip not found');
+      if (convResult) {
+        clip.filename    = convResult.newName;
+        clip.fps         = convResult.newFps;
+        clip.totalFrames = convResult.newTotal;
+        if (!project.assets.includes(convResult.newName)) project.assets.push(convResult.newName);
+      }
+      const newSegs = computeSegments(clipId, clip.totalFrames, clip.fps, genFps, genFrms);
+      project.segments.push(...newSegs);
+      await saveProject(project);
+      return project;
+    });
     res.json({ project });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -277,16 +290,35 @@ app.post('/api/project/:id/clips/:clipId/segments', async (req, res) => {
 app.patch('/api/project/:id/segments/:segId', async (req, res) => {
   const { id, segId } = req.params;
   try {
-    const project = await loadProject(id);
-    const seg = project.segments.find(s => s.id === segId);
-    if (!seg) return res.status(404).json({ error: 'Segment not found' });
-    const allowed = ['referenceImage', 'prompt', 'selected', 'generatedVideo'];
-    allowed.forEach(k => { if (req.body[k] !== undefined) seg[k] = req.body[k]; });
-    await saveProject(project);
+    const project = await withProjectLock(id, async () => {
+      const project = await loadProject(id);
+      const seg = project.segments.find(s => s.id === segId);
+      if (!seg) { const e = new Error('Segment not found'); e.status = 404; throw e; }
+      const allowed = ['referenceImage', 'prompt', 'selected', 'generatedVideo'];
+      allowed.forEach(k => { if (req.body[k] !== undefined) seg[k] = req.body[k]; });
+      await saveProject(project);
+      return project;
+    });
     res.json({ project });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(e.status ?? 500).json({ error: e.message });
   }
+});
+
+// POST /api/project/:id/resync — re-run syncJobToProject for all done jobs matching this project
+app.post('/api/project/:id/resync', async (req, res) => {
+  try {
+    const jobs = await getAllDoneJobs();
+    const relevant = jobs.filter(j => j.params?.projectId === req.params.id);
+    let synced = 0;
+    for (const job of relevant) {
+      if (job.params?.jobType === 'qwen-edit') await syncQwenJobToProject(job);
+      else await syncJobToProject(job);
+      synced++;
+    }
+    const project = await loadProject(req.params.id);
+    res.json({ synced, project });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // GET /api/project/:id/generatedAssets
@@ -301,39 +333,41 @@ app.get('/api/project/:id/generatedAssets', async (req, res) => {
 app.delete('/api/project/:id/generatedAssets/:assetId', async (req, res) => {
   const { id, assetId } = req.params;
   try {
-    const project = await loadProject(id);
-    if (!project.generatedAssets) project.generatedAssets = [];
-    const asset = project.generatedAssets.find(a => a.id === assetId);
-    if (!asset) return res.status(404).json({ error: 'Asset not found' });
+    const project = await withProjectLock(id, async () => {
+      const project = await loadProject(id);
+      if (!project.generatedAssets) project.generatedAssets = [];
+      const asset = project.generatedAssets.find(a => a.id === assetId);
+      if (!asset) { const e = new Error('Asset not found'); e.status = 404; throw e; }
 
-    // Remove file from disk
-    const { unlink } = await import('fs/promises');
-    await unlink(join(projectDir(id), 'generated', asset.filename)).catch(() => {});
+      const { unlink } = await import('fs/promises');
+      await unlink(join(projectDir(id), 'generated', asset.filename)).catch(() => {});
 
-    // Remove from array
-    project.generatedAssets = project.generatedAssets.filter(a => a.id !== assetId);
+      project.generatedAssets = project.generatedAssets.filter(a => a.id !== assetId);
 
-    // Unassign if it was the active video on its segment
-    const seg = project.segments.find(s => s.id === asset.segId);
-    if (seg?.generatedVideo === asset.filename) {
-      // Try to assign next most-recent asset for this segment, else null
-      const remaining = project.generatedAssets
-        .filter(a => a.segId === asset.segId)
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      seg.generatedVideo = remaining[0]?.filename ?? null;
-    }
+      const seg = project.segments.find(s => s.id === asset.segId);
+      if (seg?.generatedVideo === asset.filename) {
+        const remaining = project.generatedAssets
+          .filter(a => a.segId === asset.segId)
+          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        seg.generatedVideo = remaining[0]?.filename ?? null;
+      }
 
-    await saveProject(project);
+      await saveProject(project);
+      return project;
+    });
     res.json({ project });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(e.status ?? 500).json({ error: e.message }); }
 });
 
 app.delete('/api/project/:id/segments/:segId', async (req, res) => {
   const { id, segId } = req.params;
   try {
-    const project = await loadProject(id);
-    project.segments = project.segments.filter(s => s.id !== segId);
-    await saveProject(project);
+    const project = await withProjectLock(id, async () => {
+      const project = await loadProject(id);
+      project.segments = project.segments.filter(s => s.id !== segId);
+      await saveProject(project);
+      return project;
+    });
     res.json({ project });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -352,31 +386,31 @@ function snapFloor4n1(n) {
 app.post('/api/project/:id/segments/:segId/split', async (req, res) => {
   const { id, segId } = req.params;
   try {
+    const project = await withProjectLock(id, async () => {
     const project = await loadProject(id);
     const segIdx = project.segments.findIndex(s => s.id === segId);
-    if (segIdx === -1) return res.status(404).json({ error: 'Segment not found' });
+    if (segIdx === -1) { const e = new Error('Segment not found'); e.status = 404; throw e; }
 
     const seg  = project.segments[segIdx];
     const clip = project.sourceClips.find(c => c.id === seg.sourceClipId);
-    if (!clip) return res.status(400).json({ error: 'Source clip not found' });
+    if (!clip) { const e = new Error('Source clip not found'); e.status = 400; throw e; }
 
     const { atSourceFrame } = req.body;
-    if (atSourceFrame == null) return res.status(400).json({ error: 'atSourceFrame required' });
+    if (atSourceFrame == null) { const e = new Error('atSourceFrame required'); e.status = 400; throw e; }
 
     const genFps  = project.genFps  ?? 24;
     const clipFps = clip.fps;
 
     const cursorRel = atSourceFrame - seg.startFrame;
     if (cursorRel <= 0 || cursorRel >= seg.frameCount) {
-      return res.status(400).json({ error: 'Cursor is outside segment bounds' });
+      const e = new Error('Cursor is outside segment bounds'); e.status = 400; throw e;
     }
 
-    // Floor-snap the left gen frame count to nearest 4n+1
     const leftGenFrames    = snapFloor4n1(Math.round(cursorRel / clipFps * genFps));
     const leftSourceFrames = Math.round(leftGenFrames / genFps * clipFps);
 
     if (leftSourceFrames <= 0 || leftSourceFrames >= seg.frameCount) {
-      return res.status(400).json({ error: 'Split would produce an empty segment' });
+      const e = new Error('Split would produce an empty segment'); e.status = 400; throw e;
     }
 
     const leftSeg = {
@@ -423,10 +457,12 @@ app.post('/api/project/:id/segments/:segId/split', async (req, res) => {
 
     project.segments.splice(segIdx, 1, leftSeg, rightSeg);
     await saveProject(project);
+    return project;
+    }); // end withProjectLock
     res.json({ project });
   } catch (e) {
     console.error('Split error:', e);
-    res.status(500).json({ error: e.message });
+    res.status(e.status ?? 500).json({ error: e.message });
   }
 });
 
@@ -436,15 +472,18 @@ app.post('/api/project/:id/segments/:segId/split', async (req, res) => {
 app.patch('/api/project/:id/segments-bulk', async (req, res) => {
   const { id } = req.params;
   try {
-    const project = await loadProject(id);
     const { updates } = req.body;
     if (!Array.isArray(updates)) return res.status(400).json({ error: 'updates array required' });
-    for (const u of updates) {
-      const seg = project.segments.find(s => s.id === u.id);
-      if (!seg) continue;
-      if (u.selected !== undefined) seg.selected = u.selected;
-    }
-    await saveProject(project);
+    const project = await withProjectLock(id, async () => {
+      const project = await loadProject(id);
+      for (const u of updates) {
+        const seg = project.segments.find(s => s.id === u.id);
+        if (!seg) continue;
+        if (u.selected !== undefined) seg.selected = u.selected;
+      }
+      await saveProject(project);
+      return project;
+    });
     res.json({ project });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -455,20 +494,18 @@ app.patch('/api/project/:id/segments-bulk', async (req, res) => {
 app.post('/api/project/:id/segments/:segId/duplicate', async (req, res) => {
   const { id, segId } = req.params;
   try {
-    const project = await loadProject(id);
-    const segIdx = project.segments.findIndex(s => s.id === segId);
-    if (segIdx === -1) return res.status(404).json({ error: 'Segment not found' });
-    const original = project.segments[segIdx];
-    const dupe = {
-      ...original,
-      id: `seg-${randomUUID().slice(0, 8)}`,
-      generatedVideo: null,
-    };
-    project.segments.splice(segIdx + 1, 0, dupe);
-    await saveProject(project);
+    const project = await withProjectLock(id, async () => {
+      const project = await loadProject(id);
+      const segIdx = project.segments.findIndex(s => s.id === segId);
+      if (segIdx === -1) { const e = new Error('Segment not found'); e.status = 404; throw e; }
+      const dupe = { ...project.segments[segIdx], id: `seg-${randomUUID().slice(0, 8)}`, generatedVideo: null };
+      project.segments.splice(segIdx + 1, 0, dupe);
+      await saveProject(project);
+      return project;
+    });
     res.json({ project });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(e.status ?? 500).json({ error: e.message });
   }
 });
 
@@ -526,8 +563,12 @@ app.post('/api/project/:id/generate', async (req, res) => {
         try {
           batchStartPrevComfy = await comfyUploadVideo(prevVideoPath);
           // Persist so future batches don't need to re-upload
-          prevSeg.comfyInputFilename = batchStartPrevComfy;
-          await saveProject(project);
+          await withProjectLock(id, async () => {
+            const p = await loadProject(id);
+            const seg = p.segments.find(s => s.id === prevSeg.id);
+            if (seg) seg.comfyInputFilename = batchStartPrevComfy;
+            await saveProject(p);
+          });
           console.log(`[generate] re-uploaded prev seg video → comfyInputFilename=${batchStartPrevComfy}`);
         } catch (e) {
           console.warn(`[generate] failed to re-upload prev seg video: ${e.message}`);
@@ -795,19 +836,21 @@ async function syncQwenJobToProject(job) {
   const { projectId, clipId, frameIndex } = job.params ?? {};
   if (!projectId) return;
   try {
-    const project  = await loadProject(projectId);
-    const filename = job.result.outputPath.split('/').pop();
+    await withProjectLock(projectId, async () => {
+      const project  = await loadProject(projectId);
+      const filename = job.result.outputPath.split('/').pop();
 
-    if (!project.assets.includes(filename)) project.assets.push(filename);
+      if (!project.assets.includes(filename)) project.assets.push(filename);
 
-    const key  = `${clipId}:${frameIndex}`;
-    if (!project.frameEdits) project.frameEdits = {};
-    const edit = project.frameEdits[key] || { result: null, history: [] };
-    if (edit.result && edit.result !== filename) edit.history.push(edit.result);
-    edit.result = filename;
-    project.frameEdits[key] = edit;
+      const key  = `${clipId}:${frameIndex}`;
+      if (!project.frameEdits) project.frameEdits = {};
+      const edit = project.frameEdits[key] || { result: null, history: [] };
+      if (edit.result && edit.result !== filename) edit.history.push(edit.result);
+      edit.result = filename;
+      project.frameEdits[key] = edit;
 
-    await saveProject(project);
+      await saveProject(project);
+    });
   } catch { /* project may have been deleted */ }
 }
 
@@ -822,53 +865,51 @@ async function syncJobToProject(job) {
       return;
     }
 
-    const project  = await loadProject(projectId);
-    const seg      = project.segments.find(s => s.id === segId);
-    if (!seg) return;
+    await withProjectLock(projectId, async () => {
+      const project  = await loadProject(projectId);
+      const seg      = project.segments.find(s => s.id === segId);
+      if (!seg) return;
 
-    const filename = job.result.outputPath.split('/').pop();
-    if (!project.generatedAssets) project.generatedAssets = [];
+      const filename = job.result.outputPath.split('/').pop();
+      if (!project.generatedAssets) project.generatedAssets = [];
 
-    // Determine version number (how many assets already exist for this segment)
-    const existing = project.generatedAssets.filter(a => a.segId === segId);
-    const version  = existing.length; // 0 = "Seg N", 1 = "Seg N.1", etc.
+      const existing = project.generatedAssets.filter(a => a.segId === segId);
+      const version  = existing.length;
 
-    // Add asset if not already tracked
-    const alreadyTracked = project.generatedAssets.some(a => a.filename === filename);
-    if (!alreadyTracked) {
-      project.generatedAssets.push({
-        id:           `ga-${randomUUID().slice(0, 8)}`,
-        filename,
-        segId,
-        segmentIndex: segmentIndex ?? project.segments.indexOf(seg),
-        version,
-        createdAt:    new Date().toISOString(),
-      });
-    }
+      const alreadyTracked = project.generatedAssets.some(a => a.filename === filename);
+      if (!alreadyTracked) {
+        project.generatedAssets.push({
+          id:           `ga-${randomUUID().slice(0, 8)}`,
+          filename,
+          segId,
+          segmentIndex: segmentIndex ?? project.segments.indexOf(seg),
+          version,
+          createdAt:    new Date().toISOString(),
+        });
+      }
 
-    // Only set as active if this job is newer than the current active video.
-    // Guards against startup sync replaying old jobs over a newer result.
-    const jobTime    = new Date(job.completedAt ?? job.queuedAt ?? 0).getTime();
-    const activeAsset = project.generatedAssets.find(a => a.filename === seg.generatedVideo);
-    const activeTime = activeAsset ? new Date(activeAsset.createdAt ?? 0).getTime() : 0;
-    if (jobTime >= activeTime) {
-      seg.generatedVideo = filename;
-      if (job.result.comfyInputFilename) seg.comfyInputFilename = job.result.comfyInputFilename;
-    } else {
-      console.log(`[server] syncJobToProject: skipping ${filename} — older than current active ${seg.generatedVideo}`);
-      return;
-    }
+      const jobTime    = new Date(job.completedAt ?? job.queuedAt ?? 0).getTime();
+      const activeAsset = project.generatedAssets.find(a => a.filename === seg.generatedVideo);
+      const activeTime = activeAsset ? new Date(activeAsset.createdAt ?? 0).getTime() : 0;
+      if (jobTime >= activeTime) {
+        seg.generatedVideo = filename;
+        if (job.result.comfyInputFilename) seg.comfyInputFilename = job.result.comfyInputFilename;
+      } else {
+        console.log(`[server] syncJobToProject: skipping ${filename} — older than current active ${seg.generatedVideo}`);
+        return;
+      }
 
-    await saveProject(project);
-    console.log(`[server] synced ${filename} → ${segId} (v${version})`);
+      await saveProject(project);
+      console.log(`[server] synced ${filename} → ${segId} (v${version})`);
+    });
   } catch { /* project may have been deleted */ }
 }
 
 app.listen(PORT, async () => {
   console.log(`Motion Studio → http://localhost:${PORT}`);
-  // Sync any segments whose jobs finished while server/browser was down
+  // Sync any segments whose jobs finished while server/browser was down (all days)
   try {
-    const jobs = await getTodayJobs();
+    const jobs = await getAllDoneJobs();
     for (const job of jobs) {
       if (job.params?.jobType === 'qwen-edit') await syncQwenJobToProject(job);
       else await syncJobToProject(job);

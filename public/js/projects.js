@@ -93,8 +93,8 @@ function thumbHtml(p) {
   // video mode (default)
   if (p.thumbnail?.type === 'video')
     return `<video src="${escHtml(p.thumbnail.url)}" muted autoplay loop playsinline preload="metadata"></video>`;
-  if (p.thumbnail?.type === 'image')
-    return `<img src="${escHtml(p.thumbnail.url)}" alt="" loading="lazy">`;
+  const fallbackImg = p.refImage?.url ?? (p.thumbnail?.type === 'image' ? p.thumbnail.url : null);
+  if (fallbackImg) return `<img src="${escHtml(fallbackImg)}" alt="" loading="lazy">`;
   return _emptyThumb;
 }
 

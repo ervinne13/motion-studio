@@ -742,6 +742,16 @@ document.getElementById('panel-logs').addEventListener('click', async e => {
 
 // Delegated cancel handler on right panel job details
 document.getElementById('job-props').addEventListener('click', async e => {
+  const jsonToggle = e.target.closest('.job-json-toggle');
+  if (jsonToggle) {
+    const pre = document.getElementById(`job-json-${jsonToggle.dataset.jobId}`);
+    if (pre) {
+      pre.hidden = !pre.hidden;
+      jsonToggle.textContent = pre.hidden ? '▾ Get JSON Input' : '▴ Get JSON Input';
+    }
+    return;
+  }
+
   const cancelEl = e.target.closest('.job-cancel-btn');
   if (cancelEl) {
     const jobId = cancelEl.dataset.jobId;
@@ -923,6 +933,7 @@ function showJobInPanel(jobId) {
     <div class="asset-props-row"><span>Elapsed</span><span id="job-elapsed">${elapsed}</span></div>
     ${job.error ? `<div class="asset-props-row" style="color:#b91c1c"><span>Error</span><span style="word-break:break-word">${escHtml(job.error)}</span></div>` : ''}
     ${outputLink ? `<div class="asset-props-row">${outputLink}</div>` : ''}
+    ${job.comfyWorkflow ? `<div class="asset-props-row"><a class="job-result-link job-json-toggle" data-job-id="${job.id}">▾ Get JSON Input</a></div><pre class="job-json-pre" id="job-json-${job.id}" hidden>${escHtml(JSON.stringify(job.comfyWorkflow, null, 2))}</pre>` : ''}
     ${canCancel ? `<div class="job-cancel-row"><button class="job-cancel-btn" data-job-id="${job.id}">✕ Cancel Job</button></div>` : ''}
     ${(canCancel || job.status === 'failed') ? `<div class="job-cancel-row"><button class="job-retry-btn" data-job-id="${job.id}">↺ Retry Job</button></div>` : ''}
   `;

@@ -524,7 +524,7 @@ app.post('/api/project/:id/generate', async (req, res) => {
 
     const clipFileNames = new Set(project.sourceClips.map(c => c.filename));
     const defaultRef = project.projectReferenceImage
-      || project.assets.find(a => !clipFileNames.has(a))
+      || project.assets.find(a => !clipFileNames.has(a) && /\.(png|jpe?g|webp|gif|avif)$/i.test(a))
       || null;
     if (!defaultRef) return res.status(400).json({ error: 'No reference image found — upload an image first' });
 
@@ -916,13 +916,17 @@ app.listen(PORT, async () => {
     else await syncJobToProject(updated).catch(() => {});
   });
 
-  // Sync any segments whose jobs finished while server/browser was down (all days)
-  try {
-    const jobs = await getAllDoneJobs();
-    for (const job of jobs) {
-      if (job.params?.jobType === 'qwen-edit') await syncQwenJobToProject(job);
-      else await syncJobToProject(job);
-    }
-  } catch {}
   resumeOnStartup().catch(e => console.error('[queue] resumeOnStartup error:', e));
+
+  // Sync any segments whose jobs finished while server/browser was down (all days).
+  // Runs in background so it doesn't delay the queue poller starting.
+  (async () => {
+    try {
+      const jobs = await getAllDoneJobs();
+      for (const job of jobs) {
+        if (job.params?.jobType === 'qwen-edit') await syncQwenJobToProject(job);
+        else await syncJobToProject(job);
+      }
+    } catch {}
+  })();
 });

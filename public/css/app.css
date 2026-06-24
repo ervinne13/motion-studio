@@ -749,7 +749,23 @@ html, body {
   font-size: 11px;
   text-decoration: none;
 }
+.job-result-link { cursor: pointer; }
 .job-result-link:hover { text-decoration: underline; }
+
+.job-json-pre {
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: var(--sl-color-neutral-100);
+  border: 1px solid var(--sl-color-neutral-200);
+  border-radius: 4px;
+  padding: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  margin: 4px 0 8px;
+  color: var(--sl-color-neutral-800);
+}
 
 /* ─── Center preview ─────────────────────────────────────────── */
 .preview-panel {

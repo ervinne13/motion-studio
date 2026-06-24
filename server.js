@@ -907,6 +907,15 @@ async function syncJobToProject(job) {
 
 app.listen(PORT, async () => {
   console.log(`Motion Studio → http://localhost:${PORT}`);
+
+  // Global hook: sync every job completion to the project, regardless of when it was enqueued.
+  // Covers resumed jobs whose per-job subscribeJob callbacks were lost on restart.
+  subscribeAll(async updated => {
+    if (updated.status !== 'done') return;
+    if (updated.params?.jobType === 'qwen-edit') await syncQwenJobToProject(updated).catch(() => {});
+    else await syncJobToProject(updated).catch(() => {});
+  });
+
   // Sync any segments whose jobs finished while server/browser was down (all days)
   try {
     const jobs = await getAllDoneJobs();

@@ -8,7 +8,8 @@ const archivedCount   = document.getElementById('archived-count');
 
 let _projects     = [];
 let _sort         = localStorage.getItem('msProjSort') || 'alpha-asc';
-let _view         = localStorage.getItem('msProjView') || 'grid';
+let _view         = localStorage.getItem('msProjView') || (window.innerWidth < 768 ? 'list' : 'grid');
+let _preview      = localStorage.getItem('msProjPreview') || (window.innerWidth < 768 ? 'image' : 'video');
 let _showArchived = false;
 
 // Sort buttons
@@ -29,6 +30,17 @@ document.querySelectorAll('[data-view]').forEach(btn => {
     _view = btn.dataset.view;
     localStorage.setItem('msProjView', _view);
     document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === _view));
+    renderProjects();
+  });
+});
+
+// Preview buttons
+document.querySelectorAll('[data-preview]').forEach(btn => {
+  btn.classList.toggle('active', btn.dataset.preview === _preview);
+  btn.addEventListener('click', () => {
+    _preview = btn.dataset.preview;
+    localStorage.setItem('msProjPreview', _preview);
+    document.querySelectorAll('[data-preview]').forEach(b => b.classList.toggle('active', b.dataset.preview === _preview));
     renderProjects();
   });
 });
@@ -62,18 +74,28 @@ function relativeTime(isoStr) {
   return new Date(isoStr).toLocaleDateString();
 }
 
-function thumbHtml(p) {
-  if (p.thumbnail?.type === 'video')
-    return `<video src="${escHtml(p.thumbnail.url)}" muted autoplay loop playsinline preload="metadata"></video>`;
-  if (p.thumbnail?.type === 'image')
-    return `<img src="${escHtml(p.thumbnail.url)}" alt="" loading="lazy">`;
-  return `<div class="proj-thumb-empty">
+const _emptyThumb = `<div class="proj-thumb-empty">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
       <path stroke-linecap="round" stroke-linejoin="round"
         d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3 20.25h18A2.25 2.25 0 0023.25 18V6A2.25 2.25 0 0021 3.75H3A2.25 2.25 0 00.75 6v12A2.25 2.25 0 003 20.25z"/>
     </svg>
     <span>No preview</span>
   </div>`;
+
+function thumbHtml(p) {
+  if (_preview === 'image') {
+    const imgSrc = p.refImage?.url ?? (p.thumbnail?.type === 'image' ? p.thumbnail.url : null);
+    if (imgSrc) return `<img src="${escHtml(imgSrc)}" alt="" loading="lazy">`;
+    if (p.thumbnail?.type === 'video')
+      return `<video src="${escHtml(p.thumbnail.url)}" muted autoplay loop playsinline preload="metadata"></video>`;
+    return _emptyThumb;
+  }
+  // video mode (default)
+  if (p.thumbnail?.type === 'video')
+    return `<video src="${escHtml(p.thumbnail.url)}" muted autoplay loop playsinline preload="metadata"></video>`;
+  if (p.thumbnail?.type === 'image')
+    return `<img src="${escHtml(p.thumbnail.url)}" alt="" loading="lazy">`;
+  return _emptyThumb;
 }
 
 const archiveSvg = `<svg viewBox="0 0 20 20" fill="currentColor"><path d="M4 3a2 2 0 100 4h12a2 2 0 100-4H4zM3 8h14v7a2 2 0 01-2 2H5a2 2 0 01-2-2V8zm5 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z"/></svg>`;
@@ -122,7 +144,7 @@ function makeCard(p) {
   const done  = p.doneCount;
   const pct   = total > 0 ? Math.round(done / total * 100) : 0;
   const meta  = total > 0
-    ? `${total} seg${total !== 1 ? 's' : ''} · ${done} done`
+    ? `${done}/${total} Segment${total !== 1 ? 's' : ''}`
     : 'No segments yet';
 
   card.innerHTML = `
@@ -154,7 +176,7 @@ function makeRow(p) {
   const done     = p.doneCount;
   const pct      = total > 0 ? Math.round(done / total * 100) : 0;
   const meta     = total > 0
-    ? `${total} seg${total !== 1 ? 's' : ''} · ${done} done`
+    ? `${done}/${total} Segment${total !== 1 ? 's' : ''}`
     : 'No segments yet';
   const modified = relativeTime(p.updatedAt);
 

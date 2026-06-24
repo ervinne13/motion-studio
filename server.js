@@ -8,7 +8,7 @@ import { randomUUID } from 'crypto';
 
 dotenv.config();
 
-import { probeVideo, extractFrameRange, concatVideos, mixAudio } from './lib/video.js';
+import { probeVideo, extractFrameRange, concatVideos, mixAudio, convertFps, splitVideoAtFrame, hasAudioStream } from './lib/video.js';
 import { basename } from 'path';
 import {
   createProject, loadProject, saveProject,
@@ -16,6 +16,7 @@ import {
 } from './lib/project.js';
 import { enqueue, getJob, getTodayJobs, subscribeJob, subscribeAll, cancelJob, forceRelease, resumeOnStartup } from './lib/queue.js';
 import { generateQwenEdit } from './lib/generate.js';
+import { uploadVideo as comfyUploadVideo } from './lib/comfyui.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app  = express();
@@ -68,6 +69,11 @@ app.get('/api/projects', async (req, res) => {
           ? { type: 'image', url: `/media/${p.id}/uploads/${encodeURIComponent(firstImage)}` }
           : null;
         const fileInfo = await stat(join(DATA_DIR, 'projects', id, 'project.json')).catch(() => null);
+        // First segment reference image (for image-preview mode on the projects page)
+        const firstRefFile = p.segments?.find(s => s.referenceImage)?.referenceImage ?? firstImage ?? null;
+        const refImage = firstRefFile
+          ? { url: `/media/${p.id}/uploads/${encodeURIComponent(firstRefFile)}` }
+          : null;
         projects.push({
           id:           p.id,
           name:         p.name || 'untitled',
@@ -76,6 +82,7 @@ app.get('/api/projects', async (req, res) => {
           doneCount:    p.segments?.filter(s => s.generatedVideo).length ?? 0,
           mode:         p.mode,
           thumbnail,
+          refImage,
           updatedAt:    fileInfo?.mtime?.toISOString() ?? null,
         });
       } catch { /* skip corrupted */ }
@@ -205,6 +212,25 @@ app.get('/api/project/:id/thumbnails', async (req, res) => {
 // ── Clip: append segments ──────────────────────────────────────
 // Called when a user drags a second video onto the timeline trail.
 // Creates segments for an existing clip and appends them to the project.
+
+// Pattern: clips converted by us end with _<fps>fps.<ext>
+const CONV_RE = /(_(\d+(?:\.\d+)?)fps)(\.[^.]+)$/;
+
+// Repair a clip file that was FPS-converted but had audio stripped (old bug).
+// Finds the original file beside it and re-converts with audio preserved.
+async function repairClipAudio(clipPath) {
+  if (await hasAudioStream(clipPath)) return; // already fine
+  const m = clipPath.match(CONV_RE);
+  if (!m) return;
+  const origPath = clipPath.replace(CONV_RE, '$3'); // strip the _Nfps part
+  try {
+    const { access: fsAccess } = await import('fs/promises');
+    await fsAccess(origPath);
+    console.log(`[clip] repairing audio: re-converting ${origPath} → ${clipPath}`);
+    await convertFps(origPath, clipPath, parseFloat(m[2]));
+  } catch { /* original gone or conversion failed — nothing we can do */ }
+}
+
 app.post('/api/project/:id/clips/:clipId/segments', async (req, res) => {
   const { id, clipId } = req.params;
   try {
@@ -213,6 +239,31 @@ app.post('/api/project/:id/clips/:clipId/segments', async (req, res) => {
     if (!clip) return res.status(404).json({ error: 'Clip not found' });
     const genFps  = project.genFps  || 24;
     const genFrms = project.genFramesPerSegment || 81;
+
+    const clipPath = join(uploadsDir(id), clip.filename);
+
+    // Repair audio on clips that were previously converted with -an (old bug)
+    await repairClipAudio(clipPath).catch(() => {});
+
+    // Convert clip to project genFps if the source FPS differs (prevents lip-sync drift)
+    if (Math.abs(clip.fps - genFps) > 0.01) {
+      try {
+        const dotIdx  = clip.filename.lastIndexOf('.');
+        const base    = dotIdx >= 0 ? clip.filename.slice(0, dotIdx) : clip.filename;
+        const ext     = dotIdx >= 0 ? clip.filename.slice(dotIdx) : '.mp4';
+        const newName = `${base}_${genFps}fps${ext}`;
+        const newPath = join(uploadsDir(id), newName);
+        await convertFps(clipPath, newPath, genFps);
+        const { fps: newFps, totalFrames: newTotal } = await probeVideo(newPath);
+        clip.filename    = newName;
+        clip.fps         = newFps;
+        clip.totalFrames = newTotal;
+        if (!project.assets.includes(newName)) project.assets.push(newName);
+      } catch (convErr) {
+        console.warn('[segments] FPS conversion failed, using original:', convErr.message);
+      }
+    }
+
     const newSegs = computeSegments(clipId, clip.totalFrames, clip.fps, genFps, genFrms);
     project.segments.push(...newSegs);
     await saveProject(project);
@@ -341,6 +392,35 @@ app.post('/api/project/:id/segments/:segId/split', async (req, res) => {
       generatedVideo: null,
     };
 
+    // If the original segment had a generated video, split it at the same boundary
+    if (seg.generatedVideo) {
+      try {
+        const genDir       = join(projectDir(id), 'generated');
+        const origGenPath  = join(genDir, seg.generatedVideo);
+        const stamp        = Date.now();
+        const leftGenFile  = `split-L-${stamp}-${leftSeg.id}.mp4`;
+        const rightGenFile = `split-R-${stamp}-${rightSeg.id}.mp4`;
+
+        await splitVideoAtFrame(origGenPath, join(genDir, leftGenFile), join(genDir, rightGenFile), leftGenFrames);
+
+        leftSeg.generatedVideo  = leftGenFile;
+        rightSeg.generatedVideo = rightGenFile;
+
+        if (!project.generatedAssets) project.generatedAssets = [];
+
+        // Remove the original segment's asset entry (its segId no longer exists)
+        project.generatedAssets = project.generatedAssets.filter(a => a.segId !== segId);
+
+        // Add entries for the two new segments
+        project.generatedAssets.push(
+          { id: `ga-${randomUUID().slice(0, 8)}`, filename: leftGenFile,  segId: leftSeg.id,  segmentIndex: segIdx,     version: 0, createdAt: new Date().toISOString() },
+          { id: `ga-${randomUUID().slice(0, 8)}`, filename: rightGenFile, segId: rightSeg.id, segmentIndex: segIdx + 1, version: 0, createdAt: new Date().toISOString() },
+        );
+      } catch (splitErr) {
+        console.warn('[split] generated video split failed, clearing generatedVideo:', splitErr.message);
+      }
+    }
+
     project.segments.splice(segIdx, 1, leftSeg, rightSeg);
     await saveProject(project);
     res.json({ project });
@@ -436,6 +516,24 @@ app.post('/api/project/:id/generate', async (req, res) => {
     let batchStartPrevComfy = firstSegmentIndex > 0
       ? (allClipSegs[firstSegmentIndex - 1].comfyInputFilename ?? null)
       : null;
+
+    // Fallback: if the previous segment has a generatedVideo but no comfyInputFilename stored
+    // (e.g. older jobs, or data lost on restart), re-upload it to ComfyUI now.
+    if (firstSegmentIndex > 0 && !batchStartPrevComfy) {
+      const prevSeg = allClipSegs[firstSegmentIndex - 1];
+      if (prevSeg?.generatedVideo) {
+        const prevVideoPath = join(projectDir(id), 'generated', prevSeg.generatedVideo);
+        try {
+          batchStartPrevComfy = await comfyUploadVideo(prevVideoPath);
+          // Persist so future batches don't need to re-upload
+          prevSeg.comfyInputFilename = batchStartPrevComfy;
+          await saveProject(project);
+          console.log(`[generate] re-uploaded prev seg video → comfyInputFilename=${batchStartPrevComfy}`);
+        } catch (e) {
+          console.warn(`[generate] failed to re-upload prev seg video: ${e.message}`);
+        }
+      }
+    }
 
     for (let i = 0; i < clipSegs.length; i++) {
       const seg         = clipSegs[i];
@@ -538,7 +636,7 @@ app.post('/api/project/:id/export', async (req, res) => {
   const { includeAudio = false } = req.body ?? {};
   try {
     const project  = await loadProject(id);
-    const genSegs  = project.segments.filter(s => s.generatedVideo);
+    const genSegs  = project.segments.filter(s => s.generatedVideo && s.selected !== false);
     if (!genSegs.length) return res.status(400).json({ error: 'No generated segments to export' });
 
     const { mkdir } = await import('fs/promises');
@@ -557,6 +655,8 @@ app.post('/api/project/:id/export', async (req, res) => {
 
     if (includeAudio && project.sourceClips?.length) {
       const audioSource = join(projectDir(id), 'uploads', project.sourceClips[0].filename);
+      // Auto-repair if clip was previously converted without audio (old bug)
+      await repairClipAudio(audioSource).catch(() => {});
       await mixAudio(concatPath, audioSource, outPath);
       // clean up silent concat
       const { unlink } = await import('fs/promises');

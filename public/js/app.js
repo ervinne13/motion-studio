@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { timelineSetProject, timelineSetJobs, timelineClearSelection, timelineRedraw, getFrameInfo } from './timeline.js';
+import { timelineSetProject, timelineSetJobs, timelineClearSelection, timelineRedraw, timelinePatchSegment, getFrameInfo } from './timeline.js';
 import { playerBuildPlaylist, playerSeek, playerToggleGenSeg } from './player.js';
 
 // Per-segment overlay visibility — read by timeline.js draw to dim hidden segments
@@ -515,29 +515,50 @@ document.getElementById('btn-gen-modal-confirm').addEventListener('click', async
   }
 });
 
+// ── Toast notifications ────────────────────────────────────────
+function showToast(message, type = 'info', duration = 4000) {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.textContent = message;
+  container.appendChild(el);
+  const dismiss = () => {
+    el.classList.add('fade-out');
+    el.addEventListener('animationend', () => el.remove(), { once: true });
+  };
+  setTimeout(dismiss, duration);
+  el.addEventListener('click', dismiss);
+}
+
 // ── Job log panel ──────────────────────────────────────────────
 const _jobs = new Map(); // jobId → job object
 let _sortAsc = localStorage.getItem('logsSortAsc') !== 'false';
 
+// Track in-flight Qwen jobs so the global SSE can handle their completion
+const _pendingQwenJobs = new Map(); // jobId → true
+
 // Estimated generation time: ~10 min per 81 frames, linear scale
 const _SECS_PER_FRAME = 600 / 81;
+// Qwen image edit typically finishes in 1–1.5 min
+const _QWEN_ESTIMATED_SECS = 90;
 
 function _estimatePct(job) {
   if (!job.startedAt) return '~0%';
-  const elapsed    = (Date.now() - new Date(job.startedAt)) / 1000;
-  const frameCount = job.params?.frameCount ?? 81;
-  const estimated  = frameCount * _SECS_PER_FRAME;
+  const elapsed   = (Date.now() - new Date(job.startedAt)) / 1000;
+  const isQwen    = job.params?.jobType === 'qwen-edit';
+  const estimated = isQwen ? _QWEN_ESTIMATED_SECS : (job.params?.frameCount ?? 81) * _SECS_PER_FRAME;
   return `~${Math.min(99, Math.round((elapsed / estimated) * 100))}%`;
 }
 
 // Tick all visible running-job percentage displays every second
 setInterval(() => {
   document.querySelectorAll('.job-card[data-status="running"] .job-pct').forEach(el => {
-    const startedAt  = el.dataset.startedAt;
-    const frameCount = parseInt(el.dataset.frameCount, 10) || 81;
+    const startedAt = el.dataset.startedAt;
     if (!startedAt) return;
     const elapsed   = (Date.now() - new Date(startedAt)) / 1000;
-    const estimated = frameCount * _SECS_PER_FRAME;
+    const isQwen    = !!el.dataset.isQwen;
+    const estimated = isQwen ? _QWEN_ESTIMATED_SECS : (parseInt(el.dataset.frameCount, 10) || 81) * _SECS_PER_FRAME;
     el.textContent  = `~${Math.min(99, Math.round((elapsed / estimated) * 100))}%`;
   });
 }, 1000);
@@ -633,7 +654,7 @@ function renderJob(job) {
 
   const label = projName ? `${projName}  ${jobLabel}` : jobLabel;
   const right = isRunning
-    ? `<span class="job-pct" data-started-at="${job.startedAt ?? ''}" data-frame-count="${job.params?.frameCount ?? 81}">${_estimatePct(job)}</span>`
+    ? `<span class="job-pct" data-started-at="${job.startedAt ?? ''}" data-frame-count="${job.params?.frameCount ?? 81}"${isQwen ? ' data-is-qwen="1"' : ''}>${_estimatePct(job)}</span>`
     : `<span class="job-badge job-badge-${status}">${status}</span>`;
 
   card.innerHTML = `
@@ -662,8 +683,31 @@ function ensureGlobalStream() {
     const updated = JSON.parse(e.data);
     _jobs.set(updated.id, { ...(_jobs.get(updated.id) ?? {}), ...updated });
     renderJob(updated);
-    if (updated.status === 'done') onJobDone(updated);
+    if (updated.status === 'done') {
+      onJobDone(updated);
+      if (_pendingQwenJobs.has(updated.id)) {
+        onQwenDone(updated);
+        _pendingQwenJobs.delete(updated.id);
+      }
+    } else if (updated.status === 'failed' && _pendingQwenJobs.has(updated.id)) {
+      showToast('Qwen edit failed: ' + (updated.error || 'unknown error'), 'error', 6000);
+      document.querySelector(`[data-qwen-job="${updated.id}"]`)?.remove();
+      _pendingQwenJobs.delete(updated.id);
+    }
   };
+}
+
+async function onQwenDone(job) {
+  const p = state.project;
+  if (!p || p.id !== job.params?.projectId) return;
+  document.querySelector(`[data-qwen-job="${job.id}"]`)?.remove();
+  const proj = await fetch(`/api/project/${p.id}`).then(r => r.json());
+  state.project = proj;
+  renderAssetList();
+  const filename = job.result?.outputPath?.split('/').pop();
+  const thumb = document.getElementById('frame-thumb');
+  if (thumb && filename) thumb.src = `/media/${p.id}/uploads/${encodeURIComponent(filename)}?t=${Date.now()}`;
+  showToast('Qwen edit complete', 'success');
 }
 
 function watchJob(job) {
@@ -1119,7 +1163,7 @@ document.addEventListener('segment:toggleselect', async e => {
   const seg = p.segments.find(s => s.id === e.detail.segId);
   if (!seg) return;
   seg.selected = !seg.selected;
-  timelineSetProject(p);
+  timelinePatchSegment(seg.id, { selected: seg.selected });
   updateGenerateButton();
   await fetch(`/api/project/${p.id}/segments/${seg.id}`, {
     method: 'PATCH',
@@ -1145,13 +1189,19 @@ document.addEventListener('clip:appendsegments', async e => {
   const { clipId } = e.detail;
   const p = state.project;
   if (!p) return;
-  const res = await fetch(`/api/project/${p.id}/clips/${clipId}/segments`, { method: 'POST' });
-  if (!res.ok) return;
-  const { project } = await res.json();
-  state.project = project;
-  timelineSetProject(project);
-  playerBuildPlaylist(project.segments, project.id, project.sourceClips);
-  updateGenerateButton();
+  const overlay = document.getElementById('timeline-loading-overlay');
+  if (overlay) overlay.hidden = false;
+  try {
+    const res = await fetch(`/api/project/${p.id}/clips/${clipId}/segments`, { method: 'POST' });
+    if (!res.ok) return;
+    const { project } = await res.json();
+    state.project = project;
+    timelineSetProject(project);
+    playerBuildPlaylist(project.segments, project.id, project.sourceClips);
+    updateGenerateButton();
+  } finally {
+    if (overlay) overlay.hidden = true;
+  }
 });
 
 let _selectedSegId = null;
@@ -1199,7 +1249,7 @@ document.getElementById('btn-apply-qwen')?.addEventListener('click', async () =>
   const btn    = document.getElementById('btn-apply-qwen');
 
   btn.disabled = true;
-  btn.textContent = 'Queued…';
+  btn.textContent = 'Queuing…';
   try {
     const res = await fetch(`/api/project/${p.id}/frame-edit`, {
       method: 'POST',
@@ -1207,10 +1257,9 @@ document.getElementById('btn-apply-qwen')?.addEventListener('click', async () =>
       body: JSON.stringify({ clipId, frameIndex, prompt, supportImage: _supportImageFilename, nsfw }),
     });
     const data = await res.json();
-    if (!res.ok) { alert(data.error || 'Qwen edit failed'); btn.disabled = false; btn.textContent = 'Apply with Qwen →'; return; }
+    if (!res.ok) { showToast(data.error || 'Qwen edit failed to queue', 'error'); return; }
 
     const jobId = data.jobId;
-    btn.textContent = 'Running Qwen…';
 
     // Add pulsing placeholder in Uploads panel
     const uploadsList = document.getElementById('uploads-list');
@@ -1220,41 +1269,14 @@ document.getElementById('btn-apply-qwen')?.addEventListener('click', async () =>
     placeholder.innerHTML = '<span>Generating in Qwen…</span>';
     if (uploadsList) uploadsList.prepend(placeholder);
 
-    // Watch via global SSE for this job
-    const es = new EventSource('/api/jobs/stream');
-    es.onmessage = async e => {
-      const updated = JSON.parse(e.data);
-      if (updated.id !== jobId) return;
-      if (updated.status === 'done') {
-        es.close();
-        btn.disabled = false;
-        btn.textContent = 'Apply with Qwen →';
-        // Remove placeholder and refresh asset list
-        document.querySelector(`[data-qwen-job="${jobId}"]`)?.remove();
-        // Reload project to pick up new asset + frameEdits
-        const proj = await fetch(`/api/project/${p.id}`).then(r => r.json());
-        state.project = proj;
-        renderAssetList();
-        // Update frame thumbnail
-        const filename = updated.result?.outputPath?.split('/').pop();
-        const thumb = document.getElementById('frame-thumb');
-        if (thumb && filename) thumb.src = `/media/${p.id}/uploads/${encodeURIComponent(filename)}?t=${Date.now()}`;
-      } else if (updated.status === 'failed' || updated.status === 'cancelled') {
-        es.close();
-        btn.disabled = false;
-        btn.textContent = 'Apply with Qwen →';
-        document.querySelector(`[data-qwen-job="${jobId}"]`)?.remove();
-        alert('Qwen edit failed: ' + (updated.error || updated.status));
-      }
-    };
-    es.onerror = () => {
-      es.close();
-      btn.disabled = false;
-      btn.textContent = 'Apply with Qwen →';
-      document.querySelector(`[data-qwen-job="${jobId}"]`)?.remove();
-    };
+    // Register for completion via the shared global SSE
+    _pendingQwenJobs.set(jobId, true);
+    ensureGlobalStream();
+
+    showToast('Qwen edit queued — results appear in uploads when done', 'info', 5000);
   } catch (err) {
-    alert('Qwen edit failed: ' + err.message);
+    showToast('Qwen edit failed: ' + err.message, 'error');
+  } finally {
     btn.disabled = false;
     btn.textContent = 'Apply with Qwen →';
   }

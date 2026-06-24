@@ -293,6 +293,17 @@
       margin-top: 4px;
       letter-spacing: 0.04em;
     }
+
+    /* ── Mobile ── */
+    @media (max-width: 767px) {
+      .pg-main { padding: 16px 12px; }
+      .pg-section-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+      .pg-controls { width: 100%; flex-wrap: wrap; gap: 6px; }
+      .proj-grid:not(.view-list) {
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 10px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -324,6 +335,14 @@
           </button>
           <button class="pg-ctrl-btn" data-view="list" title="List view">
             <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/></svg>
+          </button>
+        </div>
+        <div class="pg-ctrl-group" id="preview-group">
+          <button class="pg-ctrl-btn" data-preview="video" title="Video preview">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zm12.553 1.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z"/></svg>
+          </button>
+          <button class="pg-ctrl-btn" data-preview="image" title="Image preview">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd"/></svg>
           </button>
         </div>
         <button class="pg-ctrl-btn" id="btn-show-archived" title="Show archived projects" style="border:1px solid var(--sl-color-neutral-200);border-radius:6px;gap:5px">

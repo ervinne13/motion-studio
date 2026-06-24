@@ -322,6 +322,10 @@
           <div class="row-label">Frames</div>
         </div>
         <div class="timeline-right">
+          <div id="timeline-loading-overlay" class="timeline-loading-overlay" hidden>
+            <div class="timeline-loading-spinner"></div>
+            Converting FPS…
+          </div>
           <canvas id="timeline-ruler"></canvas>
           <canvas id="timeline-canvas"></canvas>
         </div>
@@ -390,5 +394,6 @@
   <script type="module" src="/js/player.js"></script>
   <script type="module" src="/js/timeline.js"></script>
   <script type="module" src="/js/app.js"></script>
+  <div id="toast-container"></div>
 </body>
 </html>

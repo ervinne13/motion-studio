@@ -39,7 +39,7 @@
         </div>
       </div>
       <div class="header-actions">
-        <button class="btn" id="btn-export" disabled>Export ↓</button>
+        <button class="btn" id="btn-export" disabled>▶ Render</button>
         <button class="btn btn-primary" id="btn-generate" disabled>Generate 0 →</button>
       </div>
     </header>
@@ -401,15 +401,19 @@
   <!-- Export modal -->
   <div id="export-modal" class="modal-backdrop" hidden>
     <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="export-modal-title">
-      <h2 class="modal-title" id="export-modal-title">Export Video</h2>
+      <h2 class="modal-title" id="export-modal-title">Render Video</h2>
       <p class="modal-desc">Concatenates all generated segments into a single file.</p>
       <label class="modal-check-row">
         <input type="checkbox" id="export-audio-check" checked>
         Include audio from source video
       </label>
+      <label class="modal-check-row">
+        <input type="checkbox" id="export-2xfps-check" checked>
+        2x FPS (RIFE interpolation)
+      </label>
       <div class="modal-actions">
         <button class="modal-btn-cancel" id="btn-export-cancel">Cancel</button>
-        <button class="btn btn-primary" id="btn-export-confirm">Export</button>
+        <button class="btn btn-primary" id="btn-export-confirm">Render</button>
       </div>
     </div>
   </div>
@@ -421,6 +425,10 @@
       <label class="mob-modal-check-row">
         <input type="checkbox" id="mob-export-audio-check" checked>
         Include audio
+      </label>
+      <label class="mob-modal-check-row">
+        <input type="checkbox" id="mob-export-2xfps-check" checked>
+        2x FPS (RIFE interpolation)
       </label>
       <div class="mob-modal-actions">
         <button class="mob-modal-btn-cancel" id="mob-export-cancel">Cancel</button>

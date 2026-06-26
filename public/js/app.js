@@ -562,11 +562,14 @@ const _SECS_PER_FRAME = 600 / 81;
 // Qwen image edit typically finishes in 1–1.5 min
 const _QWEN_ESTIMATED_SECS = 90;
 
+const _RIFE2X_ESTIMATED_SECS = 120;
+
 function _estimatePct(job) {
   if (!job.startedAt) return '~0%';
   const elapsed   = (Date.now() - new Date(job.startedAt)) / 1000;
   const isQwen    = job.params?.jobType === 'qwen-edit';
-  const estimated = isQwen ? _QWEN_ESTIMATED_SECS : (job.params?.frameCount ?? 81) * _SECS_PER_FRAME;
+  const isRife2x  = job.params?.jobType === 'rife-2x';
+  const estimated = isQwen ? _QWEN_ESTIMATED_SECS : isRife2x ? _RIFE2X_ESTIMATED_SECS : (job.params?.frameCount ?? 81) * _SECS_PER_FRAME;
   return `~${Math.min(99, Math.round((elapsed / estimated) * 100))}%`;
 }
 
@@ -577,7 +580,8 @@ setInterval(() => {
     if (!startedAt) return;
     const elapsed   = (Date.now() - new Date(startedAt)) / 1000;
     const isQwen    = !!el.dataset.isQwen;
-    const estimated = isQwen ? _QWEN_ESTIMATED_SECS : (parseInt(el.dataset.frameCount, 10) || 81) * _SECS_PER_FRAME;
+    const isRife2x  = !!el.dataset.isRife2x;
+    const estimated = isQwen ? _QWEN_ESTIMATED_SECS : isRife2x ? _RIFE2X_ESTIMATED_SECS : (parseInt(el.dataset.frameCount, 10) || 81) * _SECS_PER_FRAME;
     el.textContent  = `~${Math.min(99, Math.round((elapsed / estimated) * 100))}%`;
   });
 }, 1000);
@@ -657,7 +661,10 @@ function renderJob(job) {
   }
 
   const isQwen   = job.params?.jobType === 'qwen-edit';
-  const jobLabel = isQwen
+  const isRife2x = job.params?.jobType === 'rife-2x';
+  const jobLabel = isRife2x
+    ? '2x FPS'
+    : isQwen
     ? `Frame ${job.params?.frameIndex ?? '?'}${job.params?.nsfw ? ' (NSFW)' : ''}`
     : `Seg ${(job.params?.segmentIndex ?? 0) + 1}`;
   const status   = job.status;
@@ -673,7 +680,7 @@ function renderJob(job) {
 
   const label = projName ? `${projName}  ${jobLabel}` : jobLabel;
   const right = isRunning
-    ? `<span class="job-pct" data-started-at="${job.startedAt ?? ''}" data-frame-count="${job.params?.frameCount ?? 81}"${isQwen ? ' data-is-qwen="1"' : ''}>${_estimatePct(job)}</span>`
+    ? `<span class="job-pct" data-started-at="${job.startedAt ?? ''}" data-frame-count="${job.params?.frameCount ?? 81}"${isQwen ? ' data-is-qwen="1"' : ''}${isRife2x ? ' data-is-rife2x="1"' : ''}>${_estimatePct(job)}</span>`
     : `<span class="job-badge job-badge-${status}">${status}</span>`;
 
   card.innerHTML = `
@@ -805,7 +812,24 @@ document.getElementById('job-props').addEventListener('click', async e => {
   }
 });
 
+function onRife2xDone(job) {
+  const output    = job.result?.outputPath;
+  const projectId = job.params?.projectId;
+  if (!output || !projectId) return;
+  const outputFile = output.split('/').pop();
+  const path = `/media/${projectId}/generated/${encodeURIComponent(outputFile)}`;
+  showToast('2x FPS render complete', 'success', 8000);
+  const p = state.project;
+  if (p?.id === projectId) {
+    _mobShowRenderHero(path, p.name);
+  }
+}
+
 async function onJobDone(job) {
+  if (job.params?.jobType === 'rife-2x') {
+    onRife2xDone(job);
+    return;
+  }
   const segId     = job.params?.segId;
   const output    = job.result?.outputPath;
   const projectId = job.params?.projectId;
@@ -878,9 +902,12 @@ function showJobInPanel(jobId) {
   document.getElementById('frame-props-content').hidden  = true;
   document.getElementById('job-props').hidden            = false;
 
-  const isQwen = job.params?.jobType === 'qwen-edit';
-  const seg    = (job.params?.segmentIndex ?? 0) + 1;
-  const label  = isQwen
+  const isQwen   = job.params?.jobType === 'qwen-edit';
+  const isRife2x = job.params?.jobType === 'rife-2x';
+  const seg      = (job.params?.segmentIndex ?? 0) + 1;
+  const label    = isRife2x
+    ? `2x FPS Render — ${job.status}`
+    : isQwen
     ? `Frame ${job.params?.frameIndex ?? '?'}${job.params?.nsfw ? ' (NSFW)' : ''} — ${job.status}`
     : `Segment ${seg} — ${job.status}`;
   _setPanelDetail(label);
@@ -961,7 +988,11 @@ function showJobInPanel(jobId) {
   `;
 
   let specificRows;
-  if (isQwen) {
+  if (isRife2x) {
+    specificRows = `
+      <div class="asset-props-row"><span>Type</span><span>2x FPS (RIFE)</span></div>
+    `;
+  } else if (isQwen) {
     const prompt = job.params?.prompt?.trim();
     specificRows = `
       <div class="asset-props-row"><span>Type</span><span>Qwen Edit${job.params?.nsfw ? ' (NSFW)' : ' (Safe)'}</span></div>
@@ -1019,6 +1050,29 @@ document.getElementById('panel-back-btn')?.addEventListener('click', showProjJob
 
 const _ACTIVE_STATUSES = new Set(['running', 'waiting', 'pending', 'paused']);
 
+function _projJobProgress(job) {
+  if (!job.startedAt) return '~0% | 0s';
+  const elapsed  = (Date.now() - new Date(job.startedAt)) / 1000;
+  const jobType  = job.params?.jobType ?? '';
+  const estimated = jobType === 'rife-2x' ? _RIFE2X_ESTIMATED_SECS
+    : (job.params?.frameCount ?? 81) * _SECS_PER_FRAME;
+  const pct = Math.min(99, Math.round((elapsed / estimated) * 100));
+  return `~${pct}% | ${_fmtElapsed(job.startedAt, null)}`;
+}
+
+setInterval(() => {
+  document.querySelectorAll('#proj-jobs-list .proj-job-progress').forEach(el => {
+    const startedAt = el.dataset.startedAt;
+    if (!startedAt) return;
+    const elapsed   = (Date.now() - new Date(startedAt)) / 1000;
+    const jobType   = el.dataset.jobType ?? '';
+    const estimated = jobType === 'rife-2x' ? _RIFE2X_ESTIMATED_SECS
+      : (parseInt(el.dataset.frameCount, 10) || 81) * _SECS_PER_FRAME;
+    const pct = Math.min(99, Math.round((elapsed / estimated) * 100));
+    el.textContent = `~${pct}% | ${_fmtElapsed(startedAt, null)}`;
+  });
+}, 1000);
+
 function renderProjJobsDefault() {
   const listEl = document.getElementById('proj-jobs-list');
   if (!listEl || document.getElementById('proj-jobs-panel').hidden) return;
@@ -1052,14 +1106,30 @@ function renderProjJobsDefault() {
   const doneJobs   = projJobs.filter(j => !_ACTIVE_STATUSES.has(j.status)).sort(bySegAsc);
 
   const renderItem = job => {
-    const idx    = job.params?.segmentIndex ?? 0;
-    const times  = segTimes[idx];
-    const range  = times ? ` | ${times.start.toFixed(1)}s – ${times.end.toFixed(1)}s` : '';
-    const label  = `Segment ${idx + 1}${range}`;
-    const active = job.id === activeJobId ? ' active' : '';
+    const isRife2x = job.params?.jobType === 'rife-2x';
+    const active   = job.id === activeJobId ? ' active' : '';
+    let label, extra = '';
+    if (isRife2x) {
+      label = '2x FPS Render';
+      if (job.status === 'done' && job.result?.outputPath) {
+        const pid  = job.params?.projectId;
+        const file = job.result.outputPath.split('/').pop();
+        extra = `<a class="proj-job-download" href="/media/${pid}/generated/${encodeURIComponent(file)}" download="${escHtml(file)}" onclick="event.stopPropagation()">↓ Download</a>`;
+      }
+    } else {
+      const idx   = job.params?.segmentIndex ?? 0;
+      const times = segTimes[idx];
+      const range = times ? ` | ${times.start.toFixed(1)}s – ${times.end.toFixed(1)}s` : '';
+      label = `Segment ${idx + 1}${range}`;
+    }
+    const isRunning = job.status === 'running';
+    const progressSpan = isRunning
+      ? `<span class="proj-job-progress" data-started-at="${job.startedAt ?? ''}" data-frame-count="${job.params?.frameCount ?? 81}" data-job-type="${job.params?.jobType ?? ''}">${_projJobProgress(job)}</span>`
+      : '';
     return `<div class="proj-job-item${active}" data-job-id="${job.id}">
       <span class="proj-job-label">${escHtml(label)}</span>
-      <span class="job-badge job-badge-${job.status}">${job.status}</span>
+      ${progressSpan}<span class="job-badge job-badge-${job.status}">${job.status}</span>
+      ${extra}
     </div>`;
   };
 
@@ -1511,9 +1581,10 @@ document.getElementById('export-modal')?.addEventListener('click', e => {
 document.getElementById('btn-export-confirm')?.addEventListener('click', async () => {
   const p = state.project;
   if (!p) return;
-  const modal   = document.getElementById('export-modal');
-  const confirm = document.getElementById('btn-export-confirm');
+  const modal      = document.getElementById('export-modal');
+  const confirm    = document.getElementById('btn-export-confirm');
   const includeAudio = document.getElementById('export-audio-check').checked;
+  const use2xFps   = document.getElementById('export-2xfps-check').checked;
   modal.hidden = true;
   confirm.loading = true;
   confirm.disabled = true;
@@ -1521,16 +1592,21 @@ document.getElementById('btn-export-confirm')?.addEventListener('click', async (
     const res = await fetch(`/api/project/${p.id}/export`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ includeAudio }),
+      body: JSON.stringify({ includeAudio, use2xFps }),
     });
     const data = await res.json();
-    if (!res.ok) { alert(data.error || 'Export failed'); return; }
-    const a = document.createElement('a');
-    a.href     = data.path;
-    a.download = `${p.name || 'export'}.mp4`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    if (!res.ok) { alert(data.error || 'Render failed'); return; }
+    if (data.rife2xPending) {
+      watchJob(data.job);
+      showToast('2x FPS render queued — check Project Generations for progress', 'info', 6000);
+    } else {
+      const a = document.createElement('a');
+      a.href     = data.path;
+      a.download = `${p.name || 'export'}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
   } catch (e) {
     console.error('Export error:', e);
   } finally {
@@ -1871,6 +1947,7 @@ document.getElementById('mob-export-confirm')?.addEventListener('click', async (
   const p = state.project;
   if (!p) return;
   const includeAudio = document.getElementById('mob-export-audio-check').checked;
+  const use2xFps   = document.getElementById('mob-export-2xfps-check').checked;
   const modal      = document.getElementById('mob-export-modal');
   const confirmBtn = document.getElementById('mob-export-confirm');
   const renderBtn  = document.getElementById('mob-btn-export');
@@ -1883,12 +1960,17 @@ document.getElementById('mob-export-confirm')?.addEventListener('click', async (
     const res = await fetch(`/api/project/${p.id}/export`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ includeAudio }),
+      body: JSON.stringify({ includeAudio, use2xFps }),
     });
     const data = await res.json();
     if (!res.ok) { showToast(data.error || 'Render failed', 'error'); return; }
-    _mobShowRenderHero(data.path, p.name);
-    showToast('Render complete', 'success');
+    if (data.rife2xPending) {
+      watchJob(data.job);
+      showToast('2x FPS render queued — download will appear here when done', 'info', 6000);
+    } else {
+      _mobShowRenderHero(data.path, p.name);
+      showToast('Render complete', 'success');
+    }
   } catch (e) {
     showToast('Render failed: ' + e.message, 'error');
   } finally {

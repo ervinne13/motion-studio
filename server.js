@@ -64,7 +64,11 @@ app.get('/api/projects', async (req, res) => {
         const firstGen   = sortedGen[0];
         const clipNames  = new Set((p.sourceClips ?? []).map(c => c.filename));
         const firstImage = (p.assets ?? []).find(a => !clipNames.has(a));
-        const thumbnail  = firstGen
+        const preview2xPath = join(DATA_DIR, 'projects', id, 'generated', 'preview_2x.mp4');
+        const has2xPreview  = await stat(preview2xPath).then(() => true).catch(() => false);
+        const thumbnail = has2xPreview
+          ? { type: 'video', url: `/media/${p.id}/generated/preview_2x.mp4` }
+          : firstGen
           ? { type: 'video', url: `/media/${p.id}/generated/${encodeURIComponent(firstGen.filename)}` }
           : firstImage
           ? { type: 'image', url: `/media/${p.id}/uploads/${encodeURIComponent(firstImage)}` }
@@ -692,7 +696,7 @@ app.post('/api/project/:id/frame-edit', async (req, res) => {
 // POST /api/project/:id/export
 app.post('/api/project/:id/export', async (req, res) => {
   const { id } = req.params;
-  const { includeAudio = false } = req.body ?? {};
+  const { includeAudio = false, use2xFps = false } = req.body ?? {};
   try {
     const project  = await loadProject(id);
     const genSegs  = project.segments.filter(s => s.generatedVideo && s.selected !== false);
@@ -724,6 +728,26 @@ app.post('/api/project/:id/export', async (req, res) => {
       // rename concat → final (no audio mixing needed)
       const { rename } = await import('fs/promises');
       await rename(concatPath, outPath);
+    }
+
+    if (use2xFps) {
+      const rife2xFile = `export_${stamp}_2x.mp4`;
+      const rife2xPath = join(genDir, rife2xFile);
+      const job = await enqueue({
+        jobType:     'rife-2x',
+        projectId:   id,
+        projectName: project.name,
+        inputPath:   outPath,
+        outputPath:  rife2xPath,
+        outputFile:  rife2xFile,
+      });
+      return res.json({
+        rife2xPending: true,
+        jobId:        job.id,
+        job,
+        basePath:     `/media/${id}/generated/${encodeURIComponent(outFile)}`,
+        baseFilename: outFile,
+      });
     }
 
     res.json({ path: `/media/${id}/generated/${encodeURIComponent(outFile)}`, filename: outFile });

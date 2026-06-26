@@ -1,0 +1,87 @@
+{
+  "2": {
+    "inputs": {
+      "ckpt_name": "rife426.pth",
+      "clear_cache_after_n_frames": 10,
+      "multiplier": 2,
+      "fast_mode": true,
+      "ensemble": true,
+      "scale_factor": 1,
+      "dtype": "bfloat16",
+      "torch_compile": false,
+      "batch_size": 4,
+      "frames": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "RIFE VFI",
+    "_meta": {
+      "title": "RIFE 2x Interpolation"
+    }
+  },
+  "3": {
+    "inputs": {
+      "frame_rate": [
+        "7",
+        1
+      ],
+      "loop_count": 0,
+      "filename_prefix": "motion-studio/RIFE-2x",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": false,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "2",
+        0
+      ],
+      "audio": [
+        "5",
+        1
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Output Video"
+    }
+  },
+  "5": {
+    "inputs": {
+      "video": [
+        "6",
+        0
+      ]
+    },
+    "class_type": "GetVideoComponents",
+    "_meta": {
+      "title": "Get Video Components"
+    }
+  },
+  "6": {
+    "inputs": {
+      "file": "Rosé Tiktok 01.mp4",
+      "video-preview": ""
+    },
+    "class_type": "LoadVideo",
+    "_meta": {
+      "title": "Input Video"
+    }
+  },
+  "7": {
+    "inputs": {
+      "expression": "a * 2",
+      "a": [
+        "5",
+        2
+      ]
+    },
+    "class_type": "MathExpression|pysssss",
+    "_meta": {
+      "title": "Duplicate FPS"
+    }
+  }
+}

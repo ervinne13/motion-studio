@@ -398,6 +398,21 @@
     </div>
   </div>
 
+  <!-- Mobile view (≤767px) -->
+  <div id="mob-view">
+    <header class="mob-header">
+      <a href="/projects" class="mob-back">← Projects</a>
+      <span class="mob-proj-name" id="mob-proj-name">Loading…</span>
+    </header>
+    <div class="mob-body" id="mob-body">
+      <div class="mob-empty">Loading project…</div>
+    </div>
+    <footer class="mob-footer">
+      <button class="mob-btn-export" id="mob-btn-export" disabled>Export ↓</button>
+      <button class="mob-btn-generate" id="mob-btn-generate" disabled>Generate →</button>
+    </footer>
+  </div>
+
   <script type="module" src="/js/player.js"></script>
   <script type="module" src="/js/timeline.js"></script>
   <script type="module" src="/js/app.js"></script>

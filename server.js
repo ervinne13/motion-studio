@@ -840,8 +840,6 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 // ── Client-side routes (serve HTML shells) ─────────────────────
 app.get('/projects/:id', (_req, res) =>
   res.sendFile(join(__dirname, 'public', 'index.html')));
-app.get('/mobile',       (_req, res) =>
-  res.sendFile(join(__dirname, 'public', 'mobile.html')));
 app.get('/logs',         (_req, res) =>
   res.sendFile(join(__dirname, 'public', 'logs.html')));
 app.get('/logs/:jobId',  (_req, res) =>

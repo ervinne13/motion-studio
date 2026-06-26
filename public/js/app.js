@@ -94,6 +94,7 @@ function applyProject() {
     document.getElementById('btn-compare').disabled = false;
   }
   updateExportButton();
+  mobApply();
 }
 
 function updateSegDurationHint(p) {
@@ -687,6 +688,7 @@ function renderJob(job) {
 
   if (isNew) sortJobList();
   timelineSetJobs([..._jobs.values()]);
+  mobApply();
 }
 
 // Single global SSE — replaces per-job EventSource streams
@@ -840,6 +842,7 @@ async function onJobDone(job) {
   renderAssetList();
   if (p.sourceClips.length > 0) playerBuildPlaylist(project.segments, project.id, project.sourceClips);
   updateExportButton();
+  mobApply();
   const segNum = (job.params?.segmentIndex ?? 0) + 1;
   showToast(`Segment ${segNum} generation complete`, 'success');
 }
@@ -1521,6 +1524,228 @@ document.getElementById('btn-clear-segments')?.addEventListener('click', async (
   state.project = project;
   timelineClearSelection();
   applyProject();
+});
+
+// ── Mobile view ────────────────────────────────────────────────
+function _mobBuildSegBody(pid, segIdx, asset, job) {
+  const status = job?.status ?? (asset ? 'done' : null);
+  let mediaHtml = '';
+  if (asset) {
+    mediaHtml = `<video class="mob-seg-video" data-src="/media/${pid}/generated/${encodeURIComponent(asset.filename)}" muted playsinline controls preload="none"></video>`;
+  } else if (status === 'running') {
+    mediaHtml = `<div class="mob-seg-pulse">Generating…</div>`;
+  } else if (status === 'waiting') {
+    mediaHtml = `<div class="mob-seg-idle" style="color:#b45309">Up next — ComfyUI busy</div>`;
+  } else if (status === 'pending') {
+    mediaHtml = `<div class="mob-seg-idle">Pending in queue…</div>`;
+  } else if (status === 'failed') {
+    mediaHtml = `<div class="mob-seg-idle" style="color:#b91c1c">Generation failed</div>`;
+  } else {
+    mediaHtml = `<div class="mob-seg-idle">Not generated yet</div>`;
+  }
+  if (!job) return mediaHtml;
+
+  const durSec    = (job.params?.frameCount && job.params?.genFps) ? (job.params.frameCount / job.params.genFps).toFixed(1) : null;
+  const isLive    = status === 'running' && job.startedAt && !job.completedAt;
+  const elapsed   = _fmtElapsed(job.startedAt, job.completedAt);
+  const canCancel = ['pending','waiting','running'].includes(status);
+  const canRetry  = ['pending','waiting','running','failed'].includes(status);
+  const fmtT      = iso => iso ? new Date(iso).toLocaleTimeString() : '—';
+
+  const rows = [
+    ['Frames',  job.params?.frameCount ?? '—'],
+    durSec      ? ['Duration', `${durSec}s`] : null,
+    ['Start frame', job.params?.startFrame ?? 0],
+    ['Seed',    job.params?.seed ?? '—'],
+    ['Started', fmtT(job.startedAt)],
+    ['Elapsed', isLive
+      ? `<span class="mob-elapsed" data-started-at="${job.startedAt}">${elapsed}</span>`
+      : elapsed],
+    job.error   ? ['Error', `<span style="color:#b91c1c;word-break:break-word">${escHtml(job.error)}</span>`] : null,
+  ].filter(Boolean).map(([l, v]) => `<div class="mob-seg-row"><span>${l}</span><span>${v}</span></div>`).join('');
+
+  const actHtml = (canCancel || canRetry) ? `
+    <div class="mob-job-actions">
+      ${canCancel ? `<button class="mob-cancel-btn" data-job-id="${job.id}">✕ Cancel</button>` : ''}
+      ${canRetry  ? `<button class="mob-retry-btn"  data-job-id="${job.id}">↺ Retry</button>`  : ''}
+    </div>` : '';
+
+  return `${mediaHtml}<div class="mob-seg-details">${rows}${actHtml}</div>`;
+}
+
+function mobApply() {
+  if (!window.matchMedia('(max-width:767px)').matches) return;
+  const p      = state.project;
+  const nameEl = document.getElementById('mob-proj-name');
+  const bodyEl = document.getElementById('mob-body');
+  const genBtn = document.getElementById('mob-btn-generate');
+  const expBtn = document.getElementById('mob-btn-export');
+  if (!nameEl || !bodyEl) return;
+
+  if (!p) {
+    nameEl.textContent = 'Loading…';
+    bodyEl.innerHTML   = '<div class="mob-empty">Loading project…</div>';
+    if (genBtn) genBtn.disabled = true;
+    if (expBtn) expBtn.disabled = true;
+    return;
+  }
+
+  nameEl.textContent = p.name || 'untitled';
+
+  const projJobs = [..._jobs.values()].filter(j =>
+    j.params?.projectId === p.id && j.params?.jobType !== 'qwen-edit'
+  );
+
+  const latestAsset = new Map();
+  (p.generatedAssets ?? []).forEach(a => {
+    const cur = latestAsset.get(a.segmentIndex);
+    if (!cur || a.version > cur.version) latestAsset.set(a.segmentIndex, a);
+  });
+
+  const allSegIndices = [...new Set([
+    ...projJobs.map(j => j.params?.segmentIndex ?? 0),
+    ...latestAsset.keys(),
+    ...(p.segments?.map((_, i) => i) ?? []),
+  ])].sort((a, b) => a - b);
+
+  // Preserve open accordion state across re-renders
+  const openSet = new Set(
+    [...bodyEl.querySelectorAll('.mob-acc-item.open')].map(el => el.dataset.segIdx)
+  );
+
+  const badgeClass = { done:'mob-badge-done', running:'mob-badge-running', waiting:'mob-badge-waiting', pending:'mob-badge-pending', failed:'mob-badge-failed' };
+  const badgeLabel = { done:'Done', running:'Running', waiting:'Waiting', pending:'Pending', failed:'Failed' };
+
+  if (allSegIndices.length === 0) {
+    bodyEl.innerHTML = '<div class="mob-empty">No segments yet. Upload a source clip first.</div>';
+  } else {
+    bodyEl.innerHTML = allSegIndices.map(segIdx => {
+      const asset  = latestAsset.get(segIdx);
+      const job    = [...projJobs].reverse().find(j => (j.params?.segmentIndex ?? 0) === segIdx);
+      const status = job?.status ?? (asset ? 'done' : 'unknown');
+      const badge  = badgeClass[status]
+        ? `<span class="mob-badge ${badgeClass[status]}">${badgeLabel[status]}</span>` : '';
+      const isOpen = openSet.has(String(segIdx));
+      const body   = isOpen ? _mobBuildSegBody(p.id, segIdx, asset, job) : '';
+      return `
+        <div class="mob-acc-item${isOpen ? ' open' : ''}" data-seg-idx="${segIdx}">
+          <button class="mob-acc-header" type="button">
+            <span class="mob-acc-title">Segment ${segIdx + 1}</span>
+            ${badge}
+            <span class="mob-acc-chevron">›</span>
+          </button>
+          <div class="mob-acc-body">${body}</div>
+        </div>`;
+    }).join('');
+
+    bodyEl.querySelectorAll('.mob-acc-item').forEach(item => {
+      item.querySelector('.mob-acc-header').addEventListener('click', () => {
+        const wasOpen = item.classList.contains('open');
+        bodyEl.querySelectorAll('.mob-acc-item.open').forEach(other => {
+          other.classList.remove('open');
+          other.querySelector('video')?.pause();
+        });
+        if (!wasOpen) {
+          item.classList.add('open');
+          const segIdx = parseInt(item.dataset.segIdx, 10);
+          const asset  = latestAsset.get(segIdx);
+          const job    = [...projJobs].reverse().find(j => (j.params?.segmentIndex ?? 0) === segIdx);
+          item.querySelector('.mob-acc-body').innerHTML = _mobBuildSegBody(p.id, segIdx, asset, job);
+          const vid = item.querySelector('video');
+          if (vid && !vid.src && vid.dataset.src) vid.src = vid.dataset.src;
+        }
+      });
+    });
+  }
+
+  const hasUngenerated = (p.segments ?? []).some(s => !s.generatedVideo);
+  const hasGenerated   = latestAsset.size > 0 || (p.segments ?? []).some(s => s.generatedVideo);
+  if (genBtn) genBtn.disabled = !hasUngenerated;
+  if (expBtn) expBtn.disabled = !hasGenerated;
+
+  // Live elapsed tick for running jobs
+  const hasActive = projJobs.some(j => ['pending','waiting','running'].includes(j.status));
+  if (hasActive && !window._mobElapsedTimer) {
+    window._mobElapsedTimer = setInterval(() => {
+      document.querySelectorAll('.mob-elapsed[data-started-at]').forEach(el => {
+        el.textContent = _fmtElapsed(el.dataset.startedAt, null);
+      });
+    }, 1000);
+  } else if (!hasActive && window._mobElapsedTimer) {
+    clearInterval(window._mobElapsedTimer);
+    window._mobElapsedTimer = null;
+  }
+}
+
+// Cancel / Retry delegation on mob-body (wired once)
+document.getElementById('mob-body')?.addEventListener('click', async e => {
+  const cancelBtn = e.target.closest('.mob-cancel-btn');
+  if (cancelBtn) {
+    cancelBtn.disabled = true; cancelBtn.textContent = 'Cancelling…';
+    const res = await fetch(`/api/jobs/${cancelBtn.dataset.jobId}`, { method: 'DELETE' });
+    if (res.ok) { const { job } = await res.json(); watchJob(job); }
+    else { cancelBtn.disabled = false; cancelBtn.textContent = '✕ Cancel'; }
+    return;
+  }
+  const retryBtn = e.target.closest('.mob-retry-btn');
+  if (retryBtn) {
+    retryBtn.disabled = true; retryBtn.textContent = 'Retrying…';
+    const res = await fetch(`/api/jobs/${retryBtn.dataset.jobId}/retry`, { method: 'POST' });
+    if (res.ok) { const { job: newJob } = await res.json(); watchJob(newJob); }
+    else { retryBtn.disabled = false; retryBtn.textContent = '↺ Retry'; }
+  }
+});
+
+document.getElementById('mob-btn-generate')?.addEventListener('click', async () => {
+  const p = state.project;
+  if (!p) return;
+  const clip = p.sourceClips[0];
+  if (!clip) return;
+  const ungenerated = p.segments.filter(s => !s.generatedVideo);
+  if (!ungenerated.length) return;
+  const btn = document.getElementById('mob-btn-generate');
+  btn.disabled = true; btn.textContent = 'Queuing…';
+  try {
+    const res = await fetch(`/api/project/${p.id}/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clipId: clip.id, segIds: ungenerated.map(s => s.id) }),
+    });
+    const data = await res.json();
+    if (!res.ok) { alert(data.error || 'Failed to queue generation'); return; }
+    [...data.jobs].reverse().forEach(watchJob);
+    showToast(`Queued ${data.jobs.length} segment(s)`, 'success');
+  } catch (e) {
+    console.error('Mobile generate error:', e);
+  } finally {
+    btn.textContent = 'Generate →';
+    mobApply();
+  }
+});
+
+document.getElementById('mob-btn-export')?.addEventListener('click', async () => {
+  const p = state.project;
+  if (!p) return;
+  const includeAudio = confirm('Include original audio in export?');
+  const btn = document.getElementById('mob-btn-export');
+  btn.disabled = true; btn.textContent = 'Exporting…';
+  try {
+    const res = await fetch(`/api/project/${p.id}/export`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ includeAudio }),
+    });
+    const data = await res.json();
+    if (!res.ok) { alert(data.error || 'Export failed'); return; }
+    const a = document.createElement('a');
+    a.href = data.path; a.download = `${p.name || 'export'}.mp4`;
+    document.body.appendChild(a); a.click(); a.remove();
+    showToast('Export complete', 'success');
+  } catch (e) {
+    alert('Export failed: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Export ↓';
+  }
 });
 
 // ── Boot ───────────────────────────────────────────────────────

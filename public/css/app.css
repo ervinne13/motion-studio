@@ -1452,3 +1452,113 @@ html, body {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.35; }
 }
+
+/* ── Mobile view (≤767px) ────────────────────────────────────── */
+#mob-view {
+  display: none;
+  flex-direction: column;
+  height: 100dvh;
+  background: #f8fafc;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  color: #0f172a;
+}
+@media (max-width: 767px) {
+  .app { display: none !important; }
+  #mob-view { display: flex; }
+}
+
+.mob-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 16px; height: 52px; flex-shrink: 0;
+  background: #fff; border-bottom: 1px solid #e2e8f0;
+  position: sticky; top: 0; z-index: 10;
+}
+.mob-back { color: #2563eb; font-size: 14px; text-decoration: none; flex-shrink: 0; }
+.mob-proj-name {
+  font-size: 15px; font-weight: 600; flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mob-body {
+  flex: 1; overflow-y: auto;
+  padding: 12px 16px 16px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.mob-footer {
+  display: flex; gap: 10px;
+  padding: 12px 16px; flex-shrink: 0;
+  background: #fff; border-top: 1px solid #e2e8f0;
+}
+.mob-btn-generate {
+  flex: 1; padding: 13px; border: none; border-radius: 10px;
+  background: #2563eb; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer;
+  transition: opacity .15s;
+}
+.mob-btn-generate:disabled { opacity: .45; cursor: not-allowed; }
+.mob-btn-export {
+  flex: 0 0 auto; padding: 13px 18px; border-radius: 10px;
+  background: #fff; color: #374151;
+  border: 1px solid #e2e8f0; font-size: 15px; font-weight: 600; cursor: pointer;
+  transition: background .1s;
+}
+.mob-btn-export:hover { background: #f1f5f9; }
+.mob-btn-export:disabled { opacity: .45; cursor: not-allowed; }
+.mob-empty { padding: 48px 16px; text-align: center; font-size: 15px; color: #64748b; }
+
+/* Accordion */
+.mob-acc-item {
+  background: #fff; border: 1px solid #e2e8f0;
+  border-radius: 10px; overflow: hidden;
+}
+.mob-acc-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 14px; width: 100%; background: none; border: none;
+  cursor: pointer; color: #0f172a; text-align: left;
+}
+.mob-acc-title { font-size: 14px; font-weight: 600; flex: 1; }
+.mob-acc-chevron { font-size: 20px; color: #64748b; transition: transform .2s; line-height: 1; flex-shrink: 0; }
+.mob-acc-item.open .mob-acc-chevron { transform: rotate(90deg); }
+.mob-acc-body { display: none; border-top: 1px solid #e2e8f0; }
+.mob-acc-item.open .mob-acc-body { display: block; }
+
+/* Badges */
+.mob-badge {
+  display: inline-flex; align-items: center;
+  padding: 2px 8px; border-radius: 20px;
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+}
+.mob-badge-pending { background: #f1f5f9; color: #64748b; }
+.mob-badge-waiting { background: #fef3c7; color: #b45309; }
+.mob-badge-running { background: #dbeafe; color: #1d4ed8; animation: mob-pulse 1.6s ease-in-out infinite; }
+.mob-badge-done    { background: #dcfce7; color: #15803d; }
+.mob-badge-failed  { background: #fee2e2; color: #b91c1c; }
+@keyframes mob-pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+/* Segment body */
+.mob-seg-video { width: 100%; display: block; }
+.mob-seg-pulse {
+  padding: 28px 16px; text-align: center;
+  font-size: 14px; font-weight: 500; color: #2563eb;
+  animation: mob-pulse 1.6s ease-in-out infinite;
+}
+.mob-seg-idle { padding: 28px 16px; text-align: center; font-size: 14px; color: #64748b; }
+.mob-seg-details { padding: 12px 14px; display: flex; flex-direction: column; }
+.mob-seg-row {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  padding: 8px 0; border-bottom: 1px solid #e2e8f0; gap: 12px; font-size: 13px;
+}
+.mob-seg-row:last-child { border-bottom: none; }
+.mob-seg-row > span:first-child { color: #64748b; flex-shrink: 0; }
+.mob-seg-row > span:last-child  { text-align: right; word-break: break-word; }
+
+/* Cancel / Retry */
+.mob-job-actions { display: flex; gap: 8px; margin-top: 12px; }
+.mob-cancel-btn, .mob-retry-btn {
+  flex: 1; padding: 10px 12px; border-radius: 8px;
+  font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid;
+}
+.mob-cancel-btn { background: #fff5f5; border-color: #fca5a5; color: #b91c1c; }
+.mob-cancel-btn:active { background: #fee2e2; }
+.mob-retry-btn  { background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; }
+.mob-retry-btn:active { background: #dbeafe; }
+.mob-cancel-btn:disabled, .mob-retry-btn:disabled { opacity: .5; cursor: not-allowed; }

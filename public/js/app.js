@@ -94,6 +94,7 @@ function applyProject() {
     document.getElementById('btn-compare').disabled = false;
   }
   updateExportButton();
+  renderProjJobsDefault();
   mobApply();
 }
 
@@ -409,7 +410,7 @@ function showAssetInPanel(name, src, itemEl) {
   document.getElementById('frame-props-empty').hidden   = true;
   document.getElementById('frame-props-content').hidden = true;
   document.getElementById('asset-props').hidden         = false;
-  document.getElementById('right-panel-title').textContent = name;
+  _setPanelDetail(name);
 
   const img = document.getElementById('asset-props-img');
   img.src = src;
@@ -688,6 +689,7 @@ function renderJob(job) {
 
   if (isNew) sortJobList();
   timelineSetJobs([..._jobs.values()]);
+  renderProjJobsDefault();
   mobApply();
 }
 
@@ -879,7 +881,7 @@ function showJobInPanel(jobId) {
   const label  = isQwen
     ? `Frame ${job.params?.frameIndex ?? '?'}${job.params?.nsfw ? ' (NSFW)' : ''} — ${job.status}`
     : `Segment ${seg} — ${job.status}`;
-  document.getElementById('right-panel-title').textContent = label;
+  _setPanelDetail(label);
 
   const pid = job.params?.projectId ?? state.project?.id;
   const ref = job.params?.referenceImageFilename;
@@ -989,6 +991,68 @@ function showJobInPanel(jobId) {
   }
 }
 
+// ── Right panel navigation ─────────────────────────────────────
+function _setPanelDetail(title) {
+  document.getElementById('right-panel-title').textContent = title;
+  document.getElementById('right-panel-header').classList.add('detail-mode');
+  document.getElementById('panel-back-btn').hidden = false;
+  document.getElementById('proj-jobs-panel').hidden = true;
+}
+
+function showProjJobsDefault() {
+  document.getElementById('job-props').hidden           = true;
+  document.getElementById('asset-props').hidden         = true;
+  document.getElementById('frame-props-content').hidden = true;
+  document.getElementById('frame-props-empty').hidden   = true;
+  document.getElementById('proj-jobs-panel').hidden     = false;
+  document.getElementById('right-panel-title').textContent = 'Properties';
+  document.getElementById('right-panel-header').classList.remove('detail-mode');
+  document.getElementById('panel-back-btn').hidden = true;
+  document.querySelectorAll('.asset-item.active, .job-card.active, .proj-job-item.active')
+    .forEach(el => el.classList.remove('active'));
+  _clearElapsedTimer();
+}
+
+document.getElementById('panel-back-btn')?.addEventListener('click', showProjJobsDefault);
+
+function renderProjJobsDefault() {
+  const listEl = document.getElementById('proj-jobs-list');
+  if (!listEl || document.getElementById('proj-jobs-panel').hidden) return;
+  const p = state.project;
+  if (!p) { listEl.innerHTML = '<div class="proj-jobs-empty">No project loaded</div>'; return; }
+
+  const projJobs = [..._jobs.values()]
+    .filter(j => j.params?.projectId === p.id && j.params?.jobType !== 'qwen-edit')
+    .sort((a, b) => new Date(b.queuedAt ?? 0) - new Date(a.queuedAt ?? 0));
+
+  if (!projJobs.length) {
+    listEl.innerHTML = '<div class="proj-jobs-empty">No generation runs for this project</div>';
+    return;
+  }
+
+  const activeJobId = listEl.querySelector('.proj-job-item.active')?.dataset.jobId;
+
+  listEl.innerHTML = projJobs.map(job => {
+    const isQwen = job.params?.jobType === 'qwen-edit';
+    const label  = isQwen
+      ? `Frame ${job.params?.frameIndex ?? '?'}${job.params?.nsfw ? ' (NSFW)' : ''}`
+      : `Seg ${(job.params?.segmentIndex ?? 0) + 1}`;
+    const active = job.id === activeJobId ? ' active' : '';
+    return `<div class="proj-job-item${active}" data-job-id="${job.id}">
+      <span class="proj-job-label">${escHtml(label)}</span>
+      <span class="job-badge job-badge-${job.status}">${job.status}</span>
+    </div>`;
+  }).join('');
+
+  listEl.querySelectorAll('.proj-job-item').forEach(item => {
+    item.addEventListener('click', () => {
+      listEl.querySelectorAll('.proj-job-item').forEach(el => el.classList.remove('active'));
+      item.classList.add('active');
+      showJobInPanel(item.dataset.jobId);
+    });
+  });
+}
+
 // ── Frame select → right panel ─────────────────────────────────
 let _selectedSegIdForFrame = null;
 
@@ -999,9 +1063,9 @@ document.addEventListener('frame:select', async e => {
   document.querySelectorAll('.asset-item.active').forEach(el => el.classList.remove('active'));
   document.getElementById('job-props').hidden           = true;
   document.getElementById('asset-props').hidden         = true;
-  document.getElementById('right-panel-title').textContent = 'Frame Properties';
   document.getElementById('frame-props-empty').hidden   = true;
   document.getElementById('frame-props-content').hidden = false;
+  _setPanelDetail('Frame Properties');
 
   const p    = state.project;
   const clip = p?.sourceClips.find(c => c.id === clipId);
@@ -1613,8 +1677,8 @@ function mobApply() {
     [...bodyEl.querySelectorAll('.mob-acc-item.open')].map(el => el.dataset.segIdx)
   );
 
-  const badgeClass = { done:'mob-badge-done', running:'mob-badge-running', waiting:'mob-badge-waiting', pending:'mob-badge-pending', failed:'mob-badge-failed' };
-  const badgeLabel = { done:'Done', running:'Running', waiting:'Waiting', pending:'Pending', failed:'Failed' };
+  const badgeClass = { done:'mob-badge-done', running:'mob-badge-running', waiting:'mob-badge-waiting', pending:'mob-badge-pending', failed:'mob-badge-failed', paused:'mob-badge-paused' };
+  const badgeLabel = { done:'Done', running:'Running', waiting:'Waiting', pending:'Pending', failed:'Failed', paused:'Paused' };
 
   if (allSegIndices.length === 0) {
     bodyEl.innerHTML = '<div class="mob-empty">No segments yet. Upload a source clip first.</div>';
@@ -1745,6 +1809,28 @@ document.getElementById('mob-btn-export')?.addEventListener('click', async () =>
     alert('Export failed: ' + e.message);
   } finally {
     btn.disabled = false; btn.textContent = 'Export ↓';
+  }
+});
+
+// ── Pause / Resume all jobs ────────────────────────────────────
+function _setQueuePausedUI(paused) {
+  const btn = document.getElementById('btn-pause-all');
+  if (!btn) return;
+  btn.classList.toggle('paused', paused);
+  btn.title = paused ? 'Resume all jobs' : 'Pause all pending jobs';
+  document.getElementById('pause-icon').hidden  = paused;
+  document.getElementById('resume-icon').hidden = !paused;
+}
+
+fetch('/api/queue-status').then(r => r.json()).then(d => _setQueuePausedUI(d.paused)).catch(() => {});
+
+document.getElementById('btn-pause-all')?.addEventListener('click', async () => {
+  const isPaused = document.getElementById('btn-pause-all').classList.contains('paused');
+  const res = await fetch(`/api/jobs/${isPaused ? 'resume' : 'pause'}-all`, { method: 'POST' });
+  if (res.ok) {
+    const { paused } = await res.json();
+    _setQueuePausedUI(paused);
+    showToast(paused ? 'Queue paused' : 'Queue resumed', paused ? 'info' : 'success');
   }
 });
 

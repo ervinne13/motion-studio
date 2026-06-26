@@ -26,8 +26,9 @@ const DATA_DIR = process.env.DATA_DIR || './data';
 app.use(express.json());
 
 // Projects grid page — must come before express.static so / doesn't fall through to index.html
-app.get('/',        (_req, res) => res.sendFile(join(__dirname, 'public', 'projects.html')));
-app.get('/projects', (_req, res) => res.sendFile(join(__dirname, 'public', 'projects.html')));
+app.get('/',          (_req, res) => res.sendFile(join(__dirname, 'public', 'projects.html')));
+app.get('/projects',  (_req, res) => res.sendFile(join(__dirname, 'public', 'projects.html')));
+app.get('/generate',  (_req, res) => res.sendFile(join(__dirname, 'public', 'generate.html')));
 
 app.use(express.static(join(__dirname, 'public')));
 app.use('/shoelace', express.static(join(__dirname, 'node_modules/@shoelace-style/shoelace/dist')));

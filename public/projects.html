@@ -294,6 +294,10 @@
       letter-spacing: 0.04em;
     }
 
+    .mob-generate-link { display: none; }
+
+    .mob-generate-link { display: none; }
+
     /* ── Mobile ── */
     @media (max-width: 767px) {
       .pg-main { padding: 16px 12px; }
@@ -303,6 +307,17 @@
         grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
         gap: 10px;
       }
+      #btn-new-project { display: none; }
+      .mob-generate-link { display: inline-flex; text-decoration: none; }
+
+      /* Row overrides */
+      .proj-row-thumb { width: 48px; height: 48px; }
+      .proj-row-meta-label { display: none; }
+      .proj-row-modified { display: none; }
+      .proj-row-archive { display: none !important; }
+      .proj-row-delete { display: none !important; }
+      .proj-row-progress { width: 32px; }
+      .proj-row-name { font-size: 14px; }
     }
   </style>
 </head>
@@ -317,6 +332,7 @@
       <span class="pg-title">Projects</span>
     </div>
     <button class="btn btn-primary" id="btn-new-project">+ New Project</button>
+    <a class="btn btn-primary mob-generate-link" href="/generate">Generate</a>
   </header>
 
   <main class="pg-main">

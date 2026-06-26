@@ -8,8 +8,9 @@ const archivedCount   = document.getElementById('archived-count');
 
 let _projects     = [];
 let _sort         = localStorage.getItem('msProjSort') || 'alpha-asc';
-let _view         = localStorage.getItem('msProjView') || (window.innerWidth < 768 ? 'list' : 'grid');
-let _preview      = localStorage.getItem('msProjPreview') || (window.innerWidth < 768 ? 'image' : 'video');
+const _isMobile   = window.innerWidth < 768;
+let _view         = _isMobile ? 'list'  : (localStorage.getItem('msProjView')    || 'grid');
+let _preview      = _isMobile ? 'image' : (localStorage.getItem('msProjPreview') || 'video');
 let _showArchived = false;
 
 // Sort buttons
@@ -175,15 +176,14 @@ function makeRow(p) {
   const total    = p.segmentCount;
   const done     = p.doneCount;
   const pct      = total > 0 ? Math.round(done / total * 100) : 0;
-  const meta     = total > 0
-    ? `${done}/${total} Segment${total !== 1 ? 's' : ''}`
-    : 'No segments yet';
+  const metaCount = total > 0 ? `${done}/${total}` : '';
+  const metaLabel = total > 0 ? ` Segment${total !== 1 ? 's' : ''}` : 'No segments yet';
   const modified = relativeTime(p.updatedAt);
 
   row.innerHTML = `
     <div class="proj-row-thumb">${thumbHtml(p)}</div>
     <div class="proj-row-name" title="${escHtml(p.name)}">${escHtml(p.name)}</div>
-    <div class="proj-row-meta">${meta}</div>
+    <div class="proj-row-meta"><span class="proj-row-meta-count">${metaCount}</span><span class="proj-row-meta-label">${metaLabel}</span></div>
     ${modified ? `<div class="proj-row-modified">${modified}</div>` : ''}
     <div class="proj-row-progress">${total > 0 ? `<div class="proj-row-progress-fill" style="width:${pct}%"></div>` : ''}</div>
     <button class="proj-row-archive" title="${_showArchived ? 'Unarchive' : 'Archive'}">${_showArchived ? unarchiveSvg : archiveSvg}</button>

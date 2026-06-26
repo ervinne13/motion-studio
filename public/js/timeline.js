@@ -87,6 +87,7 @@ export function timelineSetProject(p) {
   totalTLFrames = offset;
 
   scrollX = 0;
+  window._selectedTLFrame = null;
   draw();
   scheduleThumbs();
 }
@@ -138,13 +139,12 @@ function drawRuler() {
     rctx.strokeStyle = '#94a3b8'; rctx.lineWidth = 1;
     rctx.beginPath(); rctx.moveTo(x, RULER_H - 7); rctx.lineTo(x, RULER_H - 1); rctx.stroke();
 
-    // Time label
+    // Time label — timeline-relative (0-based), not source clip time
     const seg = segLayout.find(s => f >= s.timelineStart && f < s.timelineStart + s.frameCount);
     if (!seg) continue;
     const clip = project.sourceClips.find(c => c.id === seg.sourceClipId);
     const clipFps = clip?.fps || 30;
-    const clipFrame = seg.startFrame + (f - seg.timelineStart);
-    const sec = clipFrame / clipFps;
+    const sec = f / clipFps;
     const label = sec < 60
       ? `${sec.toFixed(1)}s`
       : `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`;

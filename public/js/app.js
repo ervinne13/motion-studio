@@ -95,7 +95,9 @@ function applyProject() {
   }
   updateExportButton();
   renderProjJobsDefault();
+  _syncProjElapsedTimer();
   mobApply();
+  _mobLoadLatestRender();
 }
 
 function updateSegDurationHint(p) {
@@ -690,6 +692,7 @@ function renderJob(job) {
   if (isNew) sortJobList();
   timelineSetJobs([..._jobs.values()]);
   renderProjJobsDefault();
+  _syncProjElapsedTimer();
   mobApply();
 }
 
@@ -732,8 +735,7 @@ async function onQwenDone(job) {
 function watchJob(job) {
   _jobs.set(job.id, job);
   renderJob(job);
-  if (job.status === 'done') { onJobDone(job); return; }
-  if (['failed', 'cancelled'].includes(job.status)) return;
+  if (['done', 'failed', 'cancelled'].includes(job.status)) return;
   ensureGlobalStream();
 }
 
@@ -1015,6 +1017,8 @@ function showProjJobsDefault() {
 
 document.getElementById('panel-back-btn')?.addEventListener('click', showProjJobsDefault);
 
+const _ACTIVE_STATUSES = new Set(['running', 'waiting', 'pending', 'paused']);
+
 function renderProjJobsDefault() {
   const listEl = document.getElementById('proj-jobs-list');
   if (!listEl || document.getElementById('proj-jobs-panel').hidden) return;
@@ -1022,8 +1026,7 @@ function renderProjJobsDefault() {
   if (!p) { listEl.innerHTML = '<div class="proj-jobs-empty">No project loaded</div>'; return; }
 
   const projJobs = [..._jobs.values()]
-    .filter(j => j.params?.projectId === p.id && j.params?.jobType !== 'qwen-edit')
-    .sort((a, b) => new Date(b.queuedAt ?? 0) - new Date(a.queuedAt ?? 0));
+    .filter(j => j.params?.projectId === p.id && j.params?.jobType !== 'qwen-edit');
 
   if (!projJobs.length) {
     listEl.innerHTML = '<div class="proj-jobs-empty">No generation runs for this project</div>';
@@ -1032,17 +1035,39 @@ function renderProjJobsDefault() {
 
   const activeJobId = listEl.querySelector('.proj-job-item.active')?.dataset.jobId;
 
-  listEl.innerHTML = projJobs.map(job => {
-    const isQwen = job.params?.jobType === 'qwen-edit';
-    const label  = isQwen
-      ? `Frame ${job.params?.frameIndex ?? '?'}${job.params?.nsfw ? ' (NSFW)' : ''}`
-      : `Seg ${(job.params?.segmentIndex ?? 0) + 1}`;
+  // Build timeline offsets from project segments (mirrors segLayout in timeline.js)
+  const segs = p.segments || [];
+  let tlOffset = 0;
+  const segTimes = segs.map(seg => {
+    const clip = (p.sourceClips || []).find(c => c.id === seg.sourceClipId);
+    const fps  = clip?.fps || 30;
+    const start = tlOffset / fps;
+    const end   = (tlOffset + seg.frameCount) / fps;
+    tlOffset += seg.frameCount;
+    return { start, end };
+  });
+
+  const bySegAsc = (a, b) => (a.params?.segmentIndex ?? 0) - (b.params?.segmentIndex ?? 0);
+  const activeJobs = projJobs.filter(j => _ACTIVE_STATUSES.has(j.status)).sort(bySegAsc);
+  const doneJobs   = projJobs.filter(j => !_ACTIVE_STATUSES.has(j.status)).sort(bySegAsc);
+
+  const renderItem = job => {
+    const idx    = job.params?.segmentIndex ?? 0;
+    const times  = segTimes[idx];
+    const range  = times ? ` | ${times.start.toFixed(1)}s – ${times.end.toFixed(1)}s` : '';
+    const label  = `Segment ${idx + 1}${range}`;
     const active = job.id === activeJobId ? ' active' : '';
     return `<div class="proj-job-item${active}" data-job-id="${job.id}">
       <span class="proj-job-label">${escHtml(label)}</span>
       <span class="job-badge job-badge-${job.status}">${job.status}</span>
     </div>`;
-  }).join('');
+  };
+
+  const sepHtml = (activeJobs.length > 0 && doneJobs.length > 0)
+    ? '<div class="jobs-separator">done</div>'
+    : '';
+
+  listEl.innerHTML = activeJobs.map(renderItem).join('') + sepHtml + doneJobs.map(renderItem).join('');
 
   listEl.querySelectorAll('.proj-job-item').forEach(item => {
     item.addEventListener('click', () => {
@@ -1702,6 +1727,11 @@ function mobApply() {
         </div>`;
     }).join('');
 
+    // Initialize src for any videos in preserved-open items
+    bodyEl.querySelectorAll('.mob-acc-item.open video[data-src]').forEach(vid => {
+      if (!vid.src) vid.src = vid.dataset.src;
+    });
+
     bodyEl.querySelectorAll('.mob-acc-item').forEach(item => {
       item.querySelector('.mob-acc-header').addEventListener('click', () => {
         const wasOpen = item.classList.contains('open');
@@ -1739,6 +1769,8 @@ function mobApply() {
     clearInterval(window._mobElapsedTimer);
     window._mobElapsedTimer = null;
   }
+
+  _mobPrependRenderHero();
 }
 
 // Cancel / Retry delegation on mob-body (wired once)
@@ -1787,12 +1819,66 @@ document.getElementById('mob-btn-generate')?.addEventListener('click', async () 
   }
 });
 
-document.getElementById('mob-btn-export')?.addEventListener('click', async () => {
+let _mobRenderPath = null;
+let _mobRenderName = null;
+
+function _mobShowRenderHero(path, projectName) {
+  _mobRenderPath = path;
+  _mobRenderName = projectName || 'export';
+  _mobPrependRenderHero();
+}
+
+function _mobPrependRenderHero() {
+  const bodyEl = document.getElementById('mob-body');
+  if (!bodyEl || !_mobRenderPath) return;
+  const existing = bodyEl.querySelector('.mob-render-hero');
+  if (existing) { existing.remove(); }
+  const hero = document.createElement('div');
+  hero.className = 'mob-render-hero';
+  hero.innerHTML = `
+    <video class="mob-render-video" src="${_mobRenderPath}" muted playsinline controls></video>
+    <button class="mob-render-download-btn">↓ Download</button>`;
+  hero.querySelector('.mob-render-download-btn').addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.href = _mobRenderPath; a.download = `${_mobRenderName}.mp4`;
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+  bodyEl.prepend(hero);
+}
+
+async function _mobLoadLatestRender() {
   const p = state.project;
   if (!p) return;
-  const includeAudio = confirm('Include original audio in export?');
-  const btn = document.getElementById('mob-btn-export');
-  btn.disabled = true; btn.textContent = 'Exporting…';
+  try {
+    const res = await fetch(`/api/project/${p.id}/exports`);
+    if (!res.ok) return;
+    const { exports } = await res.json();
+    if (exports?.length) {
+      _mobShowRenderHero(`/media/${p.id}/generated/${encodeURIComponent(exports[0])}`, p.name);
+    }
+  } catch { /* ignore */ }
+}
+
+document.getElementById('mob-btn-export')?.addEventListener('click', () => {
+  document.getElementById('mob-export-modal').hidden = false;
+});
+
+document.getElementById('mob-export-cancel')?.addEventListener('click', () => {
+  document.getElementById('mob-export-modal').hidden = true;
+});
+
+document.getElementById('mob-export-confirm')?.addEventListener('click', async () => {
+  const p = state.project;
+  if (!p) return;
+  const includeAudio = document.getElementById('mob-export-audio-check').checked;
+  const modal      = document.getElementById('mob-export-modal');
+  const confirmBtn = document.getElementById('mob-export-confirm');
+  const renderBtn  = document.getElementById('mob-btn-export');
+
+  modal.hidden = true;
+  confirmBtn.disabled = true;
+  renderBtn.disabled = true; renderBtn.textContent = 'Rendering…';
+
   try {
     const res = await fetch(`/api/project/${p.id}/export`, {
       method: 'POST',
@@ -1800,26 +1886,82 @@ document.getElementById('mob-btn-export')?.addEventListener('click', async () =>
       body: JSON.stringify({ includeAudio }),
     });
     const data = await res.json();
-    if (!res.ok) { alert(data.error || 'Export failed'); return; }
-    const a = document.createElement('a');
-    a.href = data.path; a.download = `${p.name || 'export'}.mp4`;
-    document.body.appendChild(a); a.click(); a.remove();
-    showToast('Export complete', 'success');
+    if (!res.ok) { showToast(data.error || 'Render failed', 'error'); return; }
+    _mobShowRenderHero(data.path, p.name);
+    showToast('Render complete', 'success');
   } catch (e) {
-    alert('Export failed: ' + e.message);
+    showToast('Render failed: ' + e.message, 'error');
   } finally {
-    btn.disabled = false; btn.textContent = 'Export ↓';
+    confirmBtn.disabled = false;
+    renderBtn.disabled = false; renderBtn.textContent = 'Render';
   }
 });
+
+// ── Project elapsed timer ──────────────────────────────────────
+let _projElapsedTimer = null;
+
+function _projElapsedSecs() {
+  const p = state.project;
+  if (!p) return null;
+  const projJobs = [..._jobs.values()].filter(j =>
+    j.params?.projectId === p.id && j.params?.jobType !== 'qwen-edit'
+  );
+  let total = 0;
+  let hasRunning = false;
+  for (const j of projJobs) {
+    if (j.status === 'done' && j.startedAt && j.completedAt) {
+      total += (new Date(j.completedAt) - new Date(j.startedAt)) / 1000;
+    } else if (j.status === 'running' && j.startedAt) {
+      total += (Date.now() - new Date(j.startedAt)) / 1000;
+      hasRunning = true;
+    }
+  }
+  return { total, hasRunning };
+}
+
+function _fmtProjElapsed(secs) {
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = Math.floor(secs % 60);
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+function _tickProjElapsed() {
+  const el = document.getElementById('proj-elapsed-label');
+  if (!el) return;
+  const result = _projElapsedSecs();
+  if (!result || result.total === 0) { el.textContent = ''; return; }
+  el.textContent = _fmtProjElapsed(result.total);
+}
+
+function _syncProjElapsedTimer() {
+  const p = state.project;
+  const projJobs = p ? [..._jobs.values()].filter(j =>
+    j.params?.projectId === p.id && j.params?.jobType !== 'qwen-edit'
+  ) : [];
+  const hasRunning = projJobs.some(j => j.status === 'running');
+
+  _tickProjElapsed();
+
+  if (hasRunning && !_projElapsedTimer) {
+    _projElapsedTimer = setInterval(_tickProjElapsed, 1000);
+  } else if (!hasRunning && _projElapsedTimer) {
+    clearInterval(_projElapsedTimer);
+    _projElapsedTimer = null;
+  }
+}
 
 // ── Pause / Resume all jobs ────────────────────────────────────
 function _setQueuePausedUI(paused) {
   const btn = document.getElementById('btn-pause-all');
   if (!btn) return;
   btn.classList.toggle('paused', paused);
-  btn.title = paused ? 'Resume all jobs' : 'Pause all pending jobs';
   document.getElementById('pause-icon').hidden  = paused;
   document.getElementById('resume-icon').hidden = !paused;
+  const lbl = document.getElementById('pause-all-label');
+  if (lbl) lbl.textContent = paused ? 'Resume' : 'Pause Pending';
 }
 
 fetch('/api/queue-status').then(r => r.json()).then(d => _setQueuePausedUI(d.paused)).catch(() => {});

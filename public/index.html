@@ -104,10 +104,6 @@
           <div class="panel-header">
             <span>Generation Logs</span>
             <div style="display:flex;gap:4px;align-items:center">
-              <button class="sort-btn" id="btn-pause-all" title="Pause all pending jobs">
-                <svg id="pause-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
-                <svg id="resume-icon" viewBox="0 0 20 20" fill="currentColor" hidden><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/></svg>
-              </button>
               <button class="sort-btn" id="btn-refresh-logs" title="Refresh logs">
                 <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/></svg>
               </button>
@@ -229,7 +225,7 @@
       <aside class="right-panel">
         <div class="panel-header" id="right-panel-header">
           <button class="panel-back-btn" id="panel-back-btn" hidden>← Back</button>
-          <span id="right-panel-title">Properties</span>
+          <span id="right-panel-title">Project Generations</span>
         </div>
 
         <!-- Job detail viewer -->
@@ -266,6 +262,14 @@
 
         <!-- Default: project jobs list -->
         <div id="proj-jobs-panel">
+          <div id="proj-jobs-actions">
+            <button class="pause-all-btn" id="btn-pause-all">
+              <svg id="pause-icon" viewBox="0 0 20 20" fill="currentColor" width="13" height="13"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+              <svg id="resume-icon" viewBox="0 0 20 20" fill="currentColor" width="13" height="13" hidden><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/></svg>
+              <span id="pause-all-label">Pause Pending</span>
+            </button>
+            <span id="proj-elapsed-label"></span>
+          </div>
           <div id="proj-jobs-list"></div>
         </div>
 
@@ -410,6 +414,21 @@
     </div>
   </div>
 
+  <!-- Mobile render modal -->
+  <div id="mob-export-modal" class="mob-modal-backdrop" hidden>
+    <div class="mob-modal-box">
+      <h2 class="mob-modal-title">Render Video</h2>
+      <label class="mob-modal-check-row">
+        <input type="checkbox" id="mob-export-audio-check" checked>
+        Include audio
+      </label>
+      <div class="mob-modal-actions">
+        <button class="mob-modal-btn-cancel" id="mob-export-cancel">Cancel</button>
+        <button class="mob-modal-btn-confirm" id="mob-export-confirm">Render</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Mobile view (≤767px) -->
   <div id="mob-view">
     <header class="mob-header">
@@ -420,8 +439,7 @@
       <div class="mob-empty">Loading project…</div>
     </div>
     <footer class="mob-footer">
-      <button class="mob-btn-export" id="mob-btn-export" disabled>Export ↓</button>
-      <button class="mob-btn-generate" id="mob-btn-generate" disabled>Generate →</button>
+      <button class="mob-btn-render" id="mob-btn-export" disabled>Render</button>
     </footer>
   </div>
 

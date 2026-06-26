@@ -1118,6 +1118,9 @@ html, body {
 
 .tool-btn:active { background: var(--sl-color-neutral-200); }
 
+.tool-btn-danger { color: var(--sl-color-danger-600); border-color: var(--sl-color-danger-200); }
+.tool-btn-danger:hover { background: var(--sl-color-danger-50); border-color: var(--sl-color-danger-400); color: var(--sl-color-danger-700); }
+
 .toolbar-sep {
   width: 1px;
   height: 18px;

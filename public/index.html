@@ -135,11 +135,15 @@
             </div>
             <div class="field-group">
               <label for="gen-fps">Gen FPS</label>
+              <label class="checkbox-inline" style="display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:13px;cursor:pointer">
+                <input type="checkbox" id="use-source-fps"> Use Source Video FPS
+              </label>
               <select class="form-control" id="gen-fps">
+                <option value="1">1 fps</option>
                 <option value="8">8 fps</option>
-                <option value="12">12 fps</option>
                 <option value="16">16 fps</option>
                 <option value="24" selected>24 fps</option>
+                <option value="30">30 fps</option>
               </select>
             </div>
             <!-- Hidden for now because we don't have a way to edit video placement anyway (yet) -->
@@ -158,6 +162,7 @@
             <div class="field-group">
               <label for="gen-frames-per-segment">Frames per Segment</label>
               <select class="form-control" id="gen-frames-per-segment">
+                <option value="13">13 frames</option>
                 <option value="49">49 frames</option>
                 <option value="81" selected>81 frames</option>
                 <option value="121">121 frames</option>
@@ -306,6 +311,8 @@
         <button class="tool-btn" id="btn-select-all">☑ All</button>
         <button class="tool-btn" id="btn-select-none">☐ None</button>
         <button class="tool-btn" id="btn-select-ungenerated">☑ Ungenerated</button>
+        <div class="toolbar-sep"></div>
+        <button class="tool-btn tool-btn-danger" id="btn-clear-segments" title="Remove all segments">✕ Clear segments</button>
         <div class="toolbar-spacer"></div>
         <select class="view-select" id="zoom-select">
           <option value="0">Segment view</option>

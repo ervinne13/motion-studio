@@ -68,6 +68,11 @@ function applyProject() {
   // Sync settings panel fields (_applyingProject guard prevents re-saving on load)
   const gfpsEl = document.getElementById('gen-fps');
   if (gfpsEl) gfpsEl.value = String(p.genFps ?? 24);
+  const useSourceFpsEl = document.getElementById('use-source-fps');
+  if (useSourceFpsEl) {
+    useSourceFpsEl.checked = !!p.useSourceFps;
+    if (gfpsEl) gfpsEl.disabled = !!p.useSourceFps;
+  }
   const gfrmEl = document.getElementById('gen-frames-per-segment');
   if (gfrmEl) gfrmEl.value = String(p.genFramesPerSegment ?? 81);
   const modeEl = document.getElementById('gen-mode');
@@ -94,8 +99,18 @@ function applyProject() {
 function updateSegDurationHint(p) {
   const hint = document.getElementById('seg-duration-hint');
   if (!hint) return;
-  const genFps  = p?.genFps  ?? 8;
   const genFrms = p?.genFramesPerSegment ?? 81;
+  if (p?.useSourceFps) {
+    const clip = p.sourceClips?.[0];
+    if (clip?.fps) {
+      const sec = (genFrms / clip.fps).toFixed(1);
+      hint.textContent = `${genFrms} frames ÷ ${clip.fps.toFixed(2)}fps (source) = ~${sec}s per segment`;
+    } else {
+      hint.textContent = `${genFrms} frames ÷ source fps`;
+    }
+    return;
+  }
+  const genFps  = p?.genFps  ?? 8;
   const sec     = (genFrms / genFps).toFixed(1);
   hint.textContent = `${genFrms} frames ÷ ${genFps}fps = ~${sec}s per segment`;
 }
@@ -1040,6 +1055,25 @@ document.getElementById('project-name')?.addEventListener('input', e => {
   if (!_applyingProject) setHeaderName(e.target.value || 'untitled');
 });
 
+document.getElementById('use-source-fps')?.addEventListener('change', async e => {
+  if (_applyingProject) return;
+  const p = state.project;
+  if (!p) return;
+  const checked = e.target.checked;
+  document.getElementById('gen-fps').disabled = checked;
+  const res = await fetch(`/api/project/${p.id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ useSourceFps: checked }),
+  });
+  if (!res.ok) return;
+  const { project } = await res.json();
+  state.project = project;
+  updateSegDurationHint(project);
+  timelineSetProject(project);
+  updateGenerateButton();
+});
+
 document.getElementById('gen-fps')?.addEventListener('change', async e => {
   if (_applyingProject) return;
   const p = state.project;
@@ -1475,6 +1509,18 @@ document.getElementById('btn-select-ungenerated')?.addEventListener('click', () 
   timelineSetProject(p);
   updateGenerateButton();
   saveSegmentSelections(p);
+});
+
+document.getElementById('btn-clear-segments')?.addEventListener('click', async () => {
+  const p = state.project;
+  if (!p || !p.segments.length) return;
+  if (!confirm(`Remove all ${p.segments.length} segment(s)? This cannot be undone.`)) return;
+  const res = await fetch(`/api/project/${p.id}/segments`, { method: 'DELETE' });
+  if (!res.ok) return;
+  const { project } = await res.json();
+  state.project = project;
+  timelineClearSelection();
+  applyProject();
 });
 
 // ── Boot ───────────────────────────────────────────────────────

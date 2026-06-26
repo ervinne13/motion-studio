@@ -115,16 +115,18 @@ app.patch('/api/project/:id', async (req, res) => {
   try {
     const project = await withProjectLock(id, async () => {
       const project = await loadProject(id);
-      const allowed = ['name', 'mode', 'fps', 'aspectRatio', 'defaultPrompt', 'defaultSeed', 'genFps', 'genFramesPerSegment', 'archived'];
+      const allowed = ['name', 'mode', 'fps', 'aspectRatio', 'defaultPrompt', 'defaultSeed', 'genFps', 'genFramesPerSegment', 'useSourceFps', 'archived'];
       allowed.forEach(k => { if (req.body[k] !== undefined) project[k] = req.body[k]; });
 
-      if (req.body.genFps !== undefined || req.body.genFramesPerSegment !== undefined) {
-        const genFps  = project.genFps  || 24;
+      if (req.body.genFps !== undefined || req.body.genFramesPerSegment !== undefined || req.body.useSourceFps !== undefined) {
         const genFrms = project.genFramesPerSegment || 81;
         const clipsWithSegs = new Set(project.segments.map(s => s.sourceClipId));
         project.segments = project.sourceClips
           .filter(clip => clipsWithSegs.has(clip.id))
-          .flatMap(clip => computeSegments(clip.id, clip.totalFrames, clip.fps, genFps, genFrms));
+          .flatMap(clip => {
+            const genFps = project.useSourceFps ? clip.fps : (project.genFps || 24);
+            return computeSegments(clip.id, clip.totalFrames, clip.fps, genFps, genFrms);
+          });
       }
 
       await saveProject(project);
@@ -242,7 +244,7 @@ app.post('/api/project/:id/clips/:clipId/segments', async (req, res) => {
     const clipSnap = projectSnap.sourceClips.find(c => c.id === clipId);
     if (!clipSnap) return res.status(404).json({ error: 'Clip not found' });
 
-    const genFps  = projectSnap.genFps  || 24;
+    const genFps  = projectSnap.useSourceFps ? clipSnap.fps : (projectSnap.genFps || 24);
     const genFrms = projectSnap.genFramesPerSegment || 81;
     const clipPath = join(uploadsDir(id), clipSnap.filename);
 
@@ -250,7 +252,7 @@ app.post('/api/project/:id/clips/:clipId/segments', async (req, res) => {
 
     // FPS conversion is slow — do it outside the lock
     let convResult = null;
-    if (Math.abs(clipSnap.fps - genFps) > 0.01) {
+    if (!projectSnap.useSourceFps && Math.abs(clipSnap.fps - genFps) > 0.01) {
       try {
         const dotIdx  = clipSnap.filename.lastIndexOf('.');
         const base    = dotIdx >= 0 ? clipSnap.filename.slice(0, dotIdx) : clipSnap.filename;
@@ -359,6 +361,21 @@ app.delete('/api/project/:id/generatedAssets/:assetId', async (req, res) => {
   } catch (e) { res.status(e.status ?? 500).json({ error: e.message }); }
 });
 
+app.delete('/api/project/:id/segments', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const project = await withProjectLock(id, async () => {
+      const project = await loadProject(id);
+      project.segments = [];
+      await saveProject(project);
+      return project;
+    });
+    res.json({ project });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.delete('/api/project/:id/segments/:segId', async (req, res) => {
   const { id, segId } = req.params;
   try {
@@ -398,7 +415,7 @@ app.post('/api/project/:id/segments/:segId/split', async (req, res) => {
     const { atSourceFrame } = req.body;
     if (atSourceFrame == null) { const e = new Error('atSourceFrame required'); e.status = 400; throw e; }
 
-    const genFps  = project.genFps  ?? 24;
+    const genFps  = project.useSourceFps ? clip.fps : (project.genFps ?? 24);
     const clipFps = clip.fps;
 
     const cursorRel = atSourceFrame - seg.startFrame;
@@ -534,7 +551,7 @@ app.post('/api/project/:id/generate', async (req, res) => {
 
     const resolvedSeed   = seed ?? (project.defaultSeed > 0 ? project.defaultSeed : Math.floor(Math.random() * 2 ** 32));
     const resolvedPrompt = prompt || project.defaultPrompt || '';
-    const genFps         = project.genFps  || 24;
+    const genFps         = project.useSourceFps ? (clip.fps || 24) : (project.genFps || 24);
 
     // Project segments are the canonical segmentation — one job per selected segment
     const allClipSegs = project.segments.filter(s => s.sourceClipId === clipId);

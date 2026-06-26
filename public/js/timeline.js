@@ -264,15 +264,16 @@ function drawSegments() {
     // Label (only if there's enough room)
     if (w > 40) {
       const clip        = project.sourceClips?.find(c => c.id === seg.sourceClipId);
-      const genFps      = project.genFps ?? 24;
-      const genFrames   = clip?.fps ? Math.round(seg.frameCount / clip.fps * genFps) : (project.genFramesPerSegment ?? 81);
+      const effectiveFps = project.useSourceFps && clip?.fps ? clip.fps : (project.genFps ?? 24);
+      const genFrames   = clip?.fps ? Math.round(seg.frameCount / clip.fps * effectiveFps) : (project.genFramesPerSegment ?? 81);
+      const fpsLabel    = project.useSourceFps && clip?.fps ? `${clip.fps % 1 === 0 ? clip.fps : clip.fps.toFixed(2)} fps` : `${effectiveFps}fps`;
       ctx.fillStyle = '#374151';
       ctx.font = `11px system-ui, sans-serif`;
       ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       ctx.save();
       ctx.rect(Math.max(x, 0), segY, Math.min(w, W - Math.max(x, 0)), rh);
       ctx.clip();
-      ctx.fillText(`Segment ${idx + 1} . ${genFps}fps . ${genFrames} Frames`, Math.max(x, 0) + 20, segY + rh / 2);
+      ctx.fillText(`Segment ${idx + 1} . ${fpsLabel} . ${genFrames} Frames`, Math.max(x, 0) + 20, segY + rh / 2);
       ctx.restore();
     }
 
@@ -718,6 +719,7 @@ canvas.addEventListener('contextmenu', e => {
   if (!seg) return;
 
   selectedSegId = seg.id;
+  document.dispatchEvent(new CustomEvent('segment:select', { detail: { segId: selectedSegId } }));
   draw();
 
   const menu = document.getElementById('seg-context-menu');

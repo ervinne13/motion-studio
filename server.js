@@ -301,7 +301,7 @@ app.patch('/api/project/:id/segments/:segId', async (req, res) => {
       const project = await loadProject(id);
       const seg = project.segments.find(s => s.id === segId);
       if (!seg) { const e = new Error('Segment not found'); e.status = 404; throw e; }
-      const allowed = ['referenceImage', 'prompt', 'selected', 'generatedVideo'];
+      const allowed = ['referenceImage', 'prompt', 'selected', 'generatedVideo', 'useBaseWorkflow'];
       allowed.forEach(k => { if (req.body[k] !== undefined) seg[k] = req.body[k]; });
       await saveProject(project);
       return project;
@@ -611,6 +611,7 @@ app.post('/api/project/:id/generate', async (req, res) => {
 
       const params = {
         segmentIndex,
+        useBaseWorkflow:        seg.useBaseWorkflow ?? false,
         projectId:              id,
         projectName:            project.name || 'untitled',
         segId:                  seg.id,
@@ -628,7 +629,7 @@ app.post('/api/project/:id/generate', async (req, res) => {
         jobPrefix:              `motion-studio/${batchId}_seg${segmentIndex + 1}`,
         clipFps:                clip.fps,
         // For the first job in a mid-stream batch, supply the prior segment's ComfyUI filename directly
-        ...(i === 0 && batchStartPrevComfy ? { prevComfyFilename: batchStartPrevComfy } : {}),
+        ...(i === 0 && batchStartPrevComfy && !(seg.useBaseWorkflow) ? { prevComfyFilename: batchStartPrevComfy } : {}),
       };
 
       const job = await enqueue(params, prevJobId);
@@ -873,6 +874,129 @@ app.post('/api/jobs/:jobId/retry', async (req, res) => {
 });
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
+
+// ── Asset browser ──────────────────────────────────────────────
+const ASSET_ROOTS = {
+  'video-references': '/mnt/windows/Others/LinuxFiles/resources_and_outputs/Video References',
+  'clothes':          '/mnt/windows/Others/LinuxFiles/resources_and_outputs/Clothes',
+  'comfyui':          `${process.env.HOME}/ComfyUI/output`,
+};
+const ASSET_ROOTS_LABELS = {
+  'video-references': 'Video References',
+  'clothes':          'Clothes',
+  'comfyui':          'ComfyUI Output',
+};
+const VIDEO_EXTS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.gif']);
+const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
+
+function _sanitizeSubpath(subpath) {
+  if (!subpath) return '';
+  // Strip leading slash, collapse .. segments
+  return subpath.replace(/\.\./g, '').replace(/^\/+/, '').replace(/\/+$/, '');
+}
+
+app.get('/api/asset-browser', async (req, res) => {
+  const { root, subpath = '', sort = 'name', page = '1', perPage = '60' } = req.query;
+  if (!ASSET_ROOTS[root]) {
+    return res.json({ roots: Object.entries(ASSET_ROOTS_LABELS).map(([k, v]) => ({ key: k, label: v })) });
+  }
+  const safe = _sanitizeSubpath(subpath);
+  const dir  = safe ? join(ASSET_ROOTS[root], safe) : ASSET_ROOTS[root];
+  const pg   = Math.max(1, parseInt(page, 10) || 1);
+  const pp   = Math.min(200, Math.max(1, parseInt(perPage, 10) || 60));
+  try {
+    const entries = await readdir(dir, { withFileTypes: true });
+    const dirs  = entries
+      .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+      .map(e => e.name)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    const files = entries.filter(e => {
+      if (!e.isFile()) return false;
+      if (e.name.startsWith('._') || e.name.startsWith('.')) return false;
+      const ext = e.name.slice(e.name.lastIndexOf('.')).toLowerCase();
+      return VIDEO_EXTS.has(ext) || IMAGE_EXTS.has(ext);
+    }).map(e => e.name);
+    const byDate = sort === 'date' || sort === 'date-asc';
+    const sortedFiles = byDate
+      ? await (async () => {
+          const withStat = await Promise.all(files.map(async f => {
+            try { const s = await stat(join(dir, f)); return { name: f, mtime: s.mtimeMs }; }
+            catch { return { name: f, mtime: 0 }; }
+          }));
+          const cmp = sort === 'date-asc' ? (a, b) => a.mtime - b.mtime : (a, b) => b.mtime - a.mtime;
+          return withStat.sort(cmp).map(x => x.name);
+        })()
+      : sort === 'name-desc'
+        ? [...files].sort((a, b) => b.localeCompare(a, undefined, { sensitivity: 'base' }))
+        : [...files].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    const total  = sortedFiles.length;
+    const paged  = sortedFiles.slice((pg - 1) * pp, pg * pp);
+    const items  = paged.map(name => {
+      const ext     = name.slice(name.lastIndexOf('.')).toLowerCase();
+      const isVideo = VIDEO_EXTS.has(ext);
+      return { name, type: isVideo ? 'video' : 'image' };
+    });
+    res.json({ root, subpath: safe, dirs, items, total, page: pg, perPage: pp, totalPages: Math.ceil(total / pp) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/asset-browser-file — serve any asset file (image or video) for preview
+app.get('/api/asset-browser-file', async (req, res) => {
+  const { root, subpath = '', name } = req.query;
+  if (!ASSET_ROOTS[root] || !name) return res.status(400).end();
+  const safe     = _sanitizeSubpath(subpath);
+  const safeName = basename(name);
+  const dir      = safe ? join(ASSET_ROOTS[root], safe) : ASSET_ROOTS[root];
+  const filePath = join(dir, safeName);
+  const ext      = safeName.slice(safeName.lastIndexOf('.')).toLowerCase();
+  if (!VIDEO_EXTS.has(ext) && !IMAGE_EXTS.has(ext)) return res.status(400).end();
+  res.sendFile(filePath, { dotfiles: 'deny' }, err => { if (err && !res.headersSent) res.status(404).end(); });
+});
+
+// POST /api/project/:id/import-from-server — copy a server asset into the project
+app.post('/api/project/:id/import-from-server', async (req, res) => {
+  const { id } = req.params;
+  const { root, subpath = '', filename } = req.body ?? {};
+  if (!ASSET_ROOTS[root] || !filename) return res.status(400).json({ error: 'Missing root or filename' });
+  const safe     = _sanitizeSubpath(subpath);
+  const safeName = basename(filename);
+  const srcPath  = join(safe ? join(ASSET_ROOTS[root], safe) : ASSET_ROOTS[root], safeName);
+  const ext      = safeName.slice(safeName.lastIndexOf('.')).toLowerCase();
+  const isVideo  = VIDEO_EXTS.has(ext);
+  try {
+    const destDir  = uploadsDir(id);
+    const destPath = join(destDir, safeName);
+
+    const { copyFile, mkdir: mkdirFs } = await import('fs/promises');
+    await mkdirFs(destDir, { recursive: true });
+    await copyFile(srcPath, destPath);
+
+    // Probe video outside the lock if needed
+    let videoMeta = null;
+    if (isVideo) videoMeta = await probeVideo(destPath);
+
+    const updated = await withProjectLock(id, async () => {
+      const proj = await loadProject(id);
+      if (!proj) throw new Error('Project not found');
+      if (!proj.assets.includes(safeName)) proj.assets.push(safeName);
+      if (isVideo && videoMeta) {
+        const alreadyClip = proj.sourceClips.some(c => c.filename === safeName);
+        if (!alreadyClip) {
+          const clipId = `clip-${randomUUID().slice(0, 8)}`;
+          proj.sourceClips.push({ id: clipId, filename: safeName, fps: videoMeta.fps, totalFrames: videoMeta.totalFrames });
+          if (proj.sourceClips.length === 1) proj.fps = videoMeta.fps;
+        }
+      }
+      await saveProject(proj);
+      return proj;
+    });
+    res.json({ project: updated, filename: safeName, isVideo });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ── Client-side routes (serve HTML shells) ─────────────────────
 app.get('/projects/:id', (_req, res) =>

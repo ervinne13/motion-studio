@@ -411,6 +411,7 @@ function showAssetInPanel(name, src, itemEl) {
   document.getElementById('job-props').hidden           = true;
   document.getElementById('frame-props-empty').hidden   = true;
   document.getElementById('frame-props-content').hidden = true;
+  document.getElementById('seg-props').hidden           = true;
   document.getElementById('asset-props').hidden         = false;
   _setPanelDetail(name);
 
@@ -529,6 +530,8 @@ document.getElementById('btn-gen-modal-confirm').addEventListener('click', async
     const data = await res.json();
     if (!res.ok) { alert(data.error || 'Failed to queue generation'); return; }
     [...data.jobs].reverse().forEach(watchJob);
+    // Force-reconnect SSE so it dumps current job states (may have already transitioned from pending)
+    _forceReconnectStream();
   } catch (e) {
     console.error('Generate error:', e);
   }
@@ -557,6 +560,9 @@ let _sortAsc = localStorage.getItem('logsSortAsc') !== 'false';
 // Track in-flight Qwen jobs so the global SSE can handle their completion
 const _pendingQwenJobs = new Map(); // jobId → true
 
+// The Qwen job currently tied to the "Apply with Qwen" button
+let _activeQwenJobId = null;
+
 // Estimated generation time: ~10 min per 81 frames, linear scale
 const _SECS_PER_FRAME = 600 / 81;
 // Qwen image edit typically finishes in 1–1.5 min
@@ -584,6 +590,10 @@ setInterval(() => {
     const estimated = isQwen ? _QWEN_ESTIMATED_SECS : isRife2x ? _RIFE2X_ESTIMATED_SECS : (parseInt(el.dataset.frameCount, 10) || 81) * _SECS_PER_FRAME;
     el.textContent  = `~${Math.min(99, Math.round((elapsed / estimated) * 100))}%`;
   });
+  // Redraw timeline to tick running-segment progress bars
+  if ([..._jobs.values()].some(j => j.status === 'running')) {
+    timelineRedraw();
+  }
 }, 1000);
 
 function sortJobList() {
@@ -705,6 +715,10 @@ function renderJob(job) {
 
 // Single global SSE — replaces per-job EventSource streams
 let _globalStream = null;
+function _forceReconnectStream() {
+  if (_globalStream) { _globalStream.close(); _globalStream = null; }
+  ensureGlobalStream();
+}
 function ensureGlobalStream() {
   if (_globalStream && _globalStream.readyState !== EventSource.CLOSED) return;
   _globalStream = new EventSource('/api/jobs/stream');
@@ -712,6 +726,23 @@ function ensureGlobalStream() {
     const updated = JSON.parse(e.data);
     _jobs.set(updated.id, { ...(_jobs.get(updated.id) ?? {}), ...updated });
     renderJob(updated);
+
+    // Keep "Apply with Qwen" button in sync with the active Qwen job's status
+    if (updated.id === _activeQwenJobId) {
+      const btn = document.getElementById('btn-apply-qwen');
+      if (btn) {
+        if (updated.status === 'waiting') {
+          btn.textContent = 'WAITING…';
+        } else if (updated.status === 'running') {
+          btn.textContent = 'RUNNING…';
+        } else if (['done', 'failed', 'cancelled'].includes(updated.status)) {
+          btn.disabled = false;
+          btn.textContent = 'Apply with Qwen →';
+          _activeQwenJobId = null;
+        }
+      }
+    }
+
     if (updated.status === 'done') {
       onJobDone(updated);
       if (_pendingQwenJobs.has(updated.id)) {
@@ -930,6 +961,7 @@ function showJobInPanel(jobId) {
   document.getElementById('asset-props').hidden          = true;
   document.getElementById('frame-props-empty').hidden    = true;
   document.getElementById('frame-props-content').hidden  = true;
+  document.getElementById('seg-props').hidden            = true;
   document.getElementById('job-props').hidden            = false;
 
   const isQwen   = job.params?.jobType === 'qwen-edit';
@@ -1067,6 +1099,7 @@ function showProjJobsDefault() {
   document.getElementById('asset-props').hidden         = true;
   document.getElementById('frame-props-content').hidden = true;
   document.getElementById('frame-props-empty').hidden   = true;
+  document.getElementById('seg-props').hidden           = true;
   document.getElementById('proj-jobs-panel').hidden     = false;
   document.getElementById('right-panel-title').textContent = 'Properties';
   document.getElementById('right-panel-header').classList.remove('detail-mode');
@@ -1201,6 +1234,7 @@ document.addEventListener('frame:select', async e => {
   document.getElementById('job-props').hidden           = true;
   document.getElementById('asset-props').hidden         = true;
   document.getElementById('frame-props-empty').hidden   = true;
+  document.getElementById('seg-props').hidden           = true;
   document.getElementById('frame-props-content').hidden = false;
   _setPanelDetail('Frame Properties');
 
@@ -1456,7 +1490,84 @@ document.addEventListener('clip:appendsegments', async e => {
 });
 
 let _selectedSegId = null;
-document.addEventListener('segment:select', e => { _selectedSegId = e.detail.segId; });
+document.addEventListener('segment:select', e => {
+  _selectedSegId = e.detail.segId;
+  if (_selectedSegId) _showSegProps(_selectedSegId);
+  else showProjJobsDefault();
+});
+
+function _showSegProps(segId) {
+  const p = state.project;
+  if (!p) return;
+  const seg = p.segments.find(s => s.id === segId);
+  if (!seg) return;
+
+  // Determine if this is the first segment of its clip
+  const clipsSegs   = p.segments.filter(s => s.sourceClipId === seg.sourceClipId);
+  const isFirstOfClip = clipsSegs[0]?.id === seg.id;
+  const segIdx      = p.segments.indexOf(seg) + 1;
+
+  document.getElementById('job-props').hidden           = true;
+  document.getElementById('asset-props').hidden         = true;
+  document.getElementById('frame-props-empty').hidden   = true;
+  document.getElementById('frame-props-content').hidden = true;
+  document.getElementById('seg-props').hidden           = false;
+  _setPanelDetail(`Segment ${segIdx}`);
+
+  // Enabled checkbox
+  const enabledCb = document.getElementById('seg-props-enabled');
+  enabledCb.checked = seg.selected !== false;
+
+  // Workflow checkbox
+  const extendCb  = document.getElementById('seg-props-extend');
+  const extendRow = document.getElementById('seg-props-extend-row');
+  const badge     = document.getElementById('seg-props-workflow-label');
+
+  if (isFirstOfClip) {
+    extendCb.checked  = false;
+    extendCb.disabled = true;
+    extendRow.classList.add('seg-props-disabled');
+    badge.textContent = 'Base Motion (first segment)';
+    badge.className   = 'seg-props-workflow-badge seg-props-badge-base';
+  } else {
+    extendCb.disabled = false;
+    extendRow.classList.remove('seg-props-disabled');
+    extendCb.checked  = !(seg.useBaseWorkflow ?? false);
+    const isBase      = seg.useBaseWorkflow ?? false;
+    badge.textContent = isBase ? 'Base Motion' : 'Extended Motion';
+    badge.className   = `seg-props-workflow-badge ${isBase ? 'seg-props-badge-base' : 'seg-props-badge-extend'}`;
+  }
+
+  // Wire up enabled toggle (replace listeners by cloning)
+  const newEnabled = enabledCb.cloneNode(true);
+  enabledCb.replaceWith(newEnabled);
+  newEnabled.addEventListener('change', async () => {
+    seg.selected = newEnabled.checked;
+    timelinePatchSegment(seg.id, { selected: seg.selected });
+    updateGenerateButton();
+    await fetch(`/api/project/${p.id}/segments/${seg.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ selected: seg.selected }),
+    });
+  });
+
+  // Wire up workflow toggle
+  const newExtend = extendCb.cloneNode(true);
+  extendCb.replaceWith(newExtend);
+  if (!isFirstOfClip) {
+    newExtend.addEventListener('change', async () => {
+      seg.useBaseWorkflow = !newExtend.checked;
+      const isBase  = seg.useBaseWorkflow;
+      badge.textContent = isBase ? 'Base Motion' : 'Extended Motion';
+      badge.className   = `seg-props-workflow-badge ${isBase ? 'seg-props-badge-base' : 'seg-props-badge-extend'}`;
+      timelinePatchSegment(seg.id, { useBaseWorkflow: seg.useBaseWorkflow });
+      await fetch(`/api/project/${p.id}/segments/${seg.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ useBaseWorkflow: seg.useBaseWorkflow }),
+      });
+    });
+  }
+}
 document.getElementById('ctx-delete-seg').addEventListener('click', () => {
   if (_selectedSegId) deleteSegment(_selectedSegId);
 });
@@ -1508,9 +1619,18 @@ document.getElementById('btn-apply-qwen')?.addEventListener('click', async () =>
       body: JSON.stringify({ clipId, frameIndex, prompt, supportImage: _supportImageFilename, nsfw }),
     });
     const data = await res.json();
-    if (!res.ok) { showToast(data.error || 'Qwen edit failed to queue', 'error'); return; }
+    if (!res.ok) {
+      showToast(data.error || 'Qwen edit failed to queue', 'error');
+      btn.disabled = false;
+      btn.textContent = 'Apply with Qwen →';
+      return;
+    }
 
     const jobId = data.jobId;
+    _activeQwenJobId = jobId;
+
+    // Keep button disabled in WAITING state — SSE will update to RUNNING then re-enable on done/fail
+    btn.textContent = 'WAITING…';
 
     // Add pulsing placeholder in Uploads panel
     const uploadsList = document.getElementById('uploads-list');
@@ -1524,10 +1644,9 @@ document.getElementById('btn-apply-qwen')?.addEventListener('click', async () =>
     _pendingQwenJobs.set(jobId, true);
     ensureGlobalStream();
 
-    showToast('Qwen edit queued — results appear in uploads when done', 'info', 5000);
+    showToast('Qwen edit queued — button re-enables when done', 'info', 5000);
   } catch (err) {
     showToast('Qwen edit failed: ' + err.message, 'error');
-  } finally {
     btn.disabled = false;
     btn.textContent = 'Apply with Qwen →';
   }
@@ -1930,6 +2049,7 @@ document.getElementById('mob-btn-generate')?.addEventListener('click', async () 
     const data = await res.json();
     if (!res.ok) { alert(data.error || 'Failed to queue generation'); return; }
     [...data.jobs].reverse().forEach(watchJob);
+    _forceReconnectStream();
     showToast(`Queued ${data.jobs.length} segment(s)`, 'success');
   } catch (e) {
     console.error('Mobile generate error:', e);
@@ -2028,40 +2148,52 @@ document.getElementById('mob-export-confirm')?.addEventListener('click', async (
 // ── Project elapsed timer ──────────────────────────────────────
 let _projElapsedTimer = null;
 
-function _projElapsedSecs() {
+function _projEtaInfo() {
   const p = state.project;
   if (!p) return null;
   const projJobs = [..._jobs.values()].filter(j =>
     j.params?.projectId === p.id && j.params?.jobType !== 'qwen-edit'
   );
-  let total = 0;
+  if (!projJobs.length) return null;
+
+  let totalElapsed = 0;
+  let totalEstimated = 0;
   let hasRunning = false;
+
   for (const j of projJobs) {
+    const jobType  = j.params?.jobType ?? '';
+    const est = jobType === 'rife-2x' ? _RIFE2X_ESTIMATED_SECS
+      : (j.params?.frameCount ?? 81) * _SECS_PER_FRAME;
+    totalEstimated += est;
+
     if (j.status === 'done' && j.startedAt && j.completedAt) {
-      total += (new Date(j.completedAt) - new Date(j.startedAt)) / 1000;
+      totalElapsed += (new Date(j.completedAt) - new Date(j.startedAt)) / 1000;
     } else if (j.status === 'running' && j.startedAt) {
-      total += (Date.now() - new Date(j.startedAt)) / 1000;
+      totalElapsed += (Date.now() - new Date(j.startedAt)) / 1000;
       hasRunning = true;
     }
   }
-  return { total, hasRunning };
-}
-
-function _fmtProjElapsed(secs) {
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  const s = Math.floor(secs % 60);
-  if (h > 0) return `${h}h ${m}m ${s}s`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
+  return { totalElapsed, totalEstimated, hasRunning };
 }
 
 function _tickProjElapsed() {
   const el = document.getElementById('proj-elapsed-label');
   if (!el) return;
-  const result = _projElapsedSecs();
-  if (!result || result.total === 0) { el.textContent = ''; return; }
-  el.textContent = _fmtProjElapsed(result.total);
+  const info = _projEtaInfo();
+  if (!info || info.totalElapsed === 0) { el.textContent = ''; return; }
+
+  const { totalElapsed, totalEstimated } = info;
+  const pct = totalEstimated > 0 ? Math.min(99, Math.round((totalElapsed / totalEstimated) * 100)) : null;
+  const fmt = secs => {
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return m > 0 ? `${m}m` : `${s}s`;
+  };
+  const elStr  = fmt(totalElapsed);
+  const estStr = totalEstimated > 0 ? `~${fmt(totalEstimated)}` : null;
+  el.textContent = estStr && pct != null
+    ? `${elStr} / ${estStr} (~${pct}%)`
+    : elStr;
 }
 
 function _syncProjElapsedTimer() {
@@ -2069,7 +2201,7 @@ function _syncProjElapsedTimer() {
   const projJobs = p ? [..._jobs.values()].filter(j =>
     j.params?.projectId === p.id && j.params?.jobType !== 'qwen-edit'
   ) : [];
-  const hasRunning = projJobs.some(j => j.status === 'running');
+  const hasRunning = projJobs.some(j => j.status === 'running' || j.status === 'waiting' || j.status === 'pending');
 
   _tickProjElapsed();
 
@@ -2102,6 +2234,342 @@ document.getElementById('btn-pause-all')?.addEventListener('click', async () => 
     _setQueuePausedUI(paused);
     showToast(paused ? 'Queue paused' : 'Queue resumed', paused ? 'info' : 'success');
   }
+});
+
+// ── Asset browser ─────────────────────────────────────────────
+let _abRoot      = null;
+let _abSubpath   = '';
+let _abSort      = 'name';
+let _abView      = 'grid';
+let _abPage      = 1;
+let _abFilter    = '';
+let _abRoots     = [];
+let _abLastData  = null;
+let _abSelected  = null; // { name, type }
+const _abThumbCache   = new Map();  // url → jpeg dataURL
+let   _abThumbObserver = null;
+const _abCaptureQueue  = [];
+let   _abCapturePending = 0;
+const _AB_CONCURRENT   = 4;
+
+function _abDrainCaptures() {
+  while (_abCapturePending < _AB_CONCURRENT && _abCaptureQueue.length) {
+    const { url, cb } = _abCaptureQueue.shift();
+    _abCapturePending++;
+    const v = document.createElement('video');
+    v.muted = true; v.preload = 'metadata'; v.playsInline = true;
+    let done = false;
+    const finish = (dataUrl) => {
+      if (done) return; done = true;
+      v.src = ''; v.load();
+      _abCapturePending--;
+      if (dataUrl) { _abThumbCache.set(url, dataUrl); cb(dataUrl); }
+      _abDrainCaptures();
+    };
+    v.addEventListener('loadedmetadata', () => {
+      v.currentTime = isFinite(v.duration) && v.duration > 1 ? 1 : 0;
+    }, { once: true });
+    v.addEventListener('seeked', () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = 320; c.height = 200;
+        c.getContext('2d').drawImage(v, 0, 0, 320, 200);
+        finish(c.toDataURL('image/jpeg', 0.75));
+      } catch { finish(null); }
+    }, { once: true });
+    v.addEventListener('error', () => finish(null), { once: true });
+    setTimeout(() => finish(null), 12000);
+    v.src = url;
+  }
+}
+
+function _abQueueThumb(url, cb) {
+  if (_abThumbCache.has(url)) { cb(_abThumbCache.get(url)); return; }
+  _abCaptureQueue.push({ url, cb });
+  _abDrainCaptures();
+}
+
+function _abObserveVideos(body) {
+  if (_abThumbObserver) _abThumbObserver.disconnect();
+  _abThumbObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      _abThumbObserver.unobserve(entry.target);
+      const wrap = entry.target;
+      const url  = wrap.dataset.videoUrl;
+      if (!url) continue;
+      _abQueueThumb(url, (dataUrl) => {
+        const vid = wrap.querySelector('video');
+        if (vid) vid.poster = dataUrl;
+      });
+    }
+  }, { threshold: 0.1 });
+  body.querySelectorAll('.ab-video-wrap[data-video-url]').forEach(w => _abThumbObserver.observe(w));
+}
+
+function _abFileUrl(name) {
+  return `/api/asset-browser-file?root=${encodeURIComponent(_abRoot)}&subpath=${encodeURIComponent(_abSubpath)}&name=${encodeURIComponent(name)}`;
+}
+
+function _abClearPreview() {
+  _abSelected = null;
+  const panel = document.getElementById('asset-browser-preview');
+  if (panel) panel.innerHTML = `<div class="ab-preview-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40" style="color:var(--sl-color-neutral-300)"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3 21h18"/></svg><p>Click a file to preview</p></div>`;
+}
+
+async function _abLoad(root, subpath = '', page = 1) {
+  _abRoot    = root;
+  _abSubpath = subpath;
+  _abPage    = page;
+  _abLastData = null;
+  _abClearPreview();
+  const body   = document.getElementById('asset-browser-body');
+  const status = document.getElementById('asset-browser-status');
+  if (body) body.innerHTML = '<div class="asset-browser-empty">Loading…</div>';
+  if (status) status.textContent = '';
+  try {
+    const url = `/api/asset-browser?root=${encodeURIComponent(root)}&subpath=${encodeURIComponent(subpath)}&sort=${_abSort}&page=${page}&perPage=60`;
+    const res  = await fetch(url);
+    const data = await res.json();
+    if (!res.ok) { if (body) body.innerHTML = `<div class="asset-browser-empty">${escHtml(data.error || 'Error')}</div>`; return; }
+    _abLastData = data;
+    _abRenderBreadcrumb(root, subpath);
+    _abRenderItems(data);
+  } catch (err) {
+    if (body) body.innerHTML = `<div class="asset-browser-empty">Failed: ${escHtml(err.message)}</div>`;
+  }
+}
+
+function _abRenderBreadcrumb(root, subpath) {
+  const bc = document.getElementById('asset-browser-breadcrumb');
+  if (!bc) return;
+  const rootLabel = _abRoots.find(r => r.key === root)?.label ?? root;
+  if (!subpath) { bc.innerHTML = ''; bc.hidden = true; return; }
+  const parts = subpath.split('/').filter(Boolean);
+  const crumbs = [`<button class="ab-crumb" data-path="">⌂ ${escHtml(rootLabel)}</button>`];
+  parts.forEach((p, i) => {
+    const path = parts.slice(0, i + 1).join('/');
+    crumbs.push(`<span class="ab-crumb-sep">›</span><button class="ab-crumb" data-path="${escHtml(path)}">${escHtml(p)}</button>`);
+  });
+  bc.innerHTML = crumbs.join('');
+  bc.hidden = false;
+  bc.querySelectorAll('.ab-crumb').forEach(btn => {
+    btn.addEventListener('click', () => _abLoad(_abRoot, btn.dataset.path, 1));
+  });
+}
+
+function _abRenderItems(data) {
+  const body   = document.getElementById('asset-browser-body');
+  const pager  = document.getElementById('asset-browser-pagination');
+  const status = document.getElementById('asset-browser-status');
+  if (!body) return;
+
+  const filter = _abFilter.toLowerCase();
+  const dirs   = (data.dirs ?? []).filter(d => !filter || d.toLowerCase().includes(filter));
+  const items  = filter ? data.items.filter(i => i.name.toLowerCase().includes(filter)) : data.items;
+
+  if (!dirs.length && !items.length) {
+    body.innerHTML = '<div class="asset-browser-empty">No files found</div>';
+    if (pager)  pager.innerHTML  = '';
+    if (status) status.textContent = '';
+    return;
+  }
+
+  const isGrid = _abView === 'grid';
+  body.className = `asset-browser-body${isGrid ? ' ab-grid' : ' ab-list'}`;
+
+  const dirHTML = dirs.map(d => `
+    <div class="ab-item ab-dir" data-dir="${escHtml(d)}" title="${escHtml(d)}">
+      <div class="ab-dir-icon">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="28" height="28"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
+      </div>
+      <span class="ab-item-name">${escHtml(d)}</span>
+    </div>`).join('');
+
+  const fileHTML = items.map(item => {
+    const fileUrl = _abFileUrl(item.name);
+    const isImg   = item.type === 'image';
+    const media   = isImg
+      ? `<img class="ab-thumb" src="${escHtml(fileUrl)}" loading="lazy" alt="">`
+      : `<div class="ab-video-wrap" data-video-url="${escHtml(fileUrl)}">
+           <video class="ab-video-thumb" src="${escHtml(fileUrl)}" muted preload="none" loop playsinline></video>
+           <div class="ab-video-play-icon"><svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M8 5v14l11-7z"/></svg></div>
+         </div>`;
+    return `<div class="ab-item" data-name="${escHtml(item.name)}" data-type="${item.type}" title="${escHtml(item.name)}">
+      ${media}
+      <span class="ab-item-name">${escHtml(item.name)}</span>
+    </div>`;
+  }).join('');
+
+  body.innerHTML = dirHTML + fileHTML;
+  _abObserveVideos(body);
+
+  // Folder navigation
+  body.querySelectorAll('.ab-dir').forEach(el => {
+    el.addEventListener('click', () => {
+      const next = _abSubpath ? `${_abSubpath}/${el.dataset.dir}` : el.dataset.dir;
+      _abFilter = '';
+      const searchEl = document.getElementById('asset-browser-search');
+      if (searchEl) searchEl.value = '';
+      _abLoad(_abRoot, next, 1);
+    });
+  });
+
+  // Video hover preview
+  body.querySelectorAll('.ab-video-thumb').forEach(vid => {
+    const wrap = vid.closest('.ab-video-wrap');
+    wrap?.addEventListener('mouseenter', () => { vid.play().catch(() => {}); wrap.querySelector('.ab-video-play-icon').style.opacity = '0'; });
+    wrap?.addEventListener('mouseleave', () => { vid.pause(); vid.currentTime = 0; wrap.querySelector('.ab-video-play-icon').style.opacity = '1'; });
+  });
+
+  // File → preview panel on click
+  body.querySelectorAll('.ab-item:not(.ab-dir)').forEach(el => {
+    el.addEventListener('click', () => {
+      body.querySelectorAll('.ab-item.ab-selected').forEach(i => i.classList.remove('ab-selected'));
+      el.classList.add('ab-selected');
+      _abPreview(el.dataset.name, el.dataset.type);
+    });
+  });
+
+  if (pager) {
+    const { page, totalPages } = data;
+    const pages = [];
+    if (page > 1) pages.push(`<button class="ab-page-btn" data-page="${page - 1}">‹ Prev</button>`);
+    if (totalPages > 1) pages.push(`<span class="ab-page-info">${page} / ${totalPages}</span>`);
+    if (page < totalPages) pages.push(`<button class="ab-page-btn" data-page="${page + 1}">Next ›</button>`);
+    pager.innerHTML = pages.join('');
+    pager.querySelectorAll('.ab-page-btn').forEach(btn => {
+      btn.addEventListener('click', () => _abLoad(_abRoot, _abSubpath, parseInt(btn.dataset.page, 10)));
+    });
+  }
+  const total = data.total + (data.dirs?.length ?? 0);
+  if (status) status.textContent = `${dirs.length} folder${dirs.length !== 1 ? 's' : ''}, ${data.total} file${data.total !== 1 ? 's' : ''}`;
+}
+
+function _abPreview(name, type) {
+  _abSelected = { name, type };
+  const panel  = document.getElementById('asset-browser-preview');
+  if (!panel) return;
+  const fileUrl = _abFileUrl(name);
+  const media   = type === 'image'
+    ? `<img class="ab-preview-media" src="${escHtml(fileUrl)}" alt="${escHtml(name)}">`
+    : `<video class="ab-preview-media" src="${escHtml(fileUrl)}" controls muted playsinline></video>`;
+  panel.innerHTML = `
+    ${media}
+    <div class="ab-preview-name" title="${escHtml(name)}">${escHtml(name)}</div>
+    <button class="btn btn-primary ab-preview-import-btn" id="btn-ab-import">↓ Import</button>
+  `;
+  document.getElementById('btn-ab-import').addEventListener('click', () => {
+    if (_abSelected) _abImport(_abSelected.name, _abSelected.type);
+  });
+}
+
+async function _abImport(filename, type) {
+  const p = state.project;
+  if (!p) return;
+  const status = document.getElementById('asset-browser-status');
+  if (status) status.textContent = `Importing ${filename}…`;
+  try {
+    const res  = await fetch(`/api/project/${p.id}/import-from-server`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ root: _abRoot, subpath: _abSubpath, filename }),
+    });
+    const data = await res.json();
+    if (!res.ok) { showToast(data.error || 'Import failed', 'error'); if (status) status.textContent = ''; return; }
+    state.project = data.project;
+    applyProject();
+    showToast(`Imported: ${filename}`, 'success');
+    if (status) status.textContent = `Imported ${filename}`;
+  } catch (err) {
+    showToast('Import failed: ' + err.message, 'error');
+    if (status) status.textContent = '';
+  }
+}
+
+async function openAssetBrowser() {
+  const modal = document.getElementById('asset-browser-modal');
+  if (!modal) return;
+  modal.hidden = false;
+
+  if (!_abRoots.length) {
+    const res  = await fetch('/api/asset-browser');
+    const data = await res.json();
+    _abRoots   = data.roots ?? [];
+    const tabs = document.getElementById('asset-browser-tabs');
+    if (tabs) {
+      tabs.innerHTML = _abRoots.map((r, i) =>
+        `<button class="ab-tab${i === 0 ? ' active' : ''}" data-root="${escHtml(r.key)}">${escHtml(r.label)}</button>`
+      ).join('');
+      tabs.querySelectorAll('.ab-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+          tabs.querySelectorAll('.ab-tab').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          _abFilter = '';
+          const searchEl = document.getElementById('asset-browser-search');
+          if (searchEl) searchEl.value = '';
+          _abClearPreview();
+          _abLoad(btn.dataset.root, '', 1);
+        });
+      });
+    }
+  }
+
+  if (_abRoots.length && !_abRoot) {
+    _abLoad(_abRoots[0].key, '', 1);
+  }
+}
+
+document.getElementById('btn-browse-server')?.addEventListener('click', e => {
+  e.stopPropagation();
+  openAssetBrowser();
+});
+
+document.getElementById('btn-asset-browser-close')?.addEventListener('click', () => {
+  document.getElementById('asset-browser-modal').hidden = true;
+});
+
+document.getElementById('asset-browser-modal')?.addEventListener('click', e => {
+  if (e.target === document.getElementById('asset-browser-modal'))
+    document.getElementById('asset-browser-modal').hidden = true;
+});
+
+function _abSyncSortBtns() {
+  document.querySelectorAll('#ab-sort-group .pg-ctrl-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.absort === _abSort);
+  });
+}
+
+document.getElementById('ab-sort-group')?.addEventListener('click', e => {
+  const btn = e.target.closest('.pg-ctrl-btn[data-absort]');
+  if (!btn) return;
+  _abSort = btn.dataset.absort;
+  _abSyncSortBtns();
+  if (_abRoot) _abLoad(_abRoot, _abSubpath, 1);
+});
+
+let _abSearchTimer = null;
+document.getElementById('asset-browser-search')?.addEventListener('input', e => {
+  clearTimeout(_abSearchTimer);
+  _abSearchTimer = setTimeout(() => {
+    _abFilter = e.target.value.trim();
+    if (_abLastData) _abRenderItems(_abLastData);
+    else if (_abRoot) _abLoad(_abRoot, _abSubpath, 1);
+  }, 200);
+});
+
+document.getElementById('asset-browser-view-grid')?.addEventListener('click', () => {
+  _abView = 'grid';
+  document.getElementById('asset-browser-view-grid').classList.add('active');
+  document.getElementById('asset-browser-view-list').classList.remove('active');
+  if (_abLastData) _abRenderItems(_abLastData);
+});
+
+document.getElementById('asset-browser-view-list')?.addEventListener('click', () => {
+  _abView = 'list';
+  document.getElementById('asset-browser-view-list').classList.add('active');
+  document.getElementById('asset-browser-view-grid').classList.remove('active');
+  if (_abLastData) _abRenderItems(_abLastData);
 });
 
 // ── Boot ───────────────────────────────────────────────────────

@@ -71,6 +71,7 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
             <span>Drop media here</span>
             <button class="import-btn" id="btn-import">+ Import</button>
+            <button class="import-btn" id="btn-browse-server" style="background:var(--sl-color-neutral-200);color:var(--sl-color-neutral-800)">Browse Server</button>
             <input type="file" id="file-input" multiple accept="video/*,image/*" hidden>
           </div>
 
@@ -260,6 +261,26 @@
           <div class="asset-props-details" id="asset-props-details"></div>
         </div>
 
+        <!-- Segment options panel -->
+        <div id="seg-props" hidden>
+          <div class="seg-props-body">
+            <div class="seg-props-section">
+              <label class="seg-props-row">
+                <span class="seg-props-label">Enabled</span>
+                <input type="checkbox" id="seg-props-enabled" class="seg-props-check">
+              </label>
+            </div>
+            <div class="seg-props-section">
+              <div class="seg-props-section-title">Workflow</div>
+              <label class="seg-props-row" id="seg-props-extend-row">
+                <span class="seg-props-label">Previous 5 Frames Influence Generation</span>
+                <input type="checkbox" id="seg-props-extend" class="seg-props-check">
+              </label>
+              <div class="seg-props-workflow-badge" id="seg-props-workflow-label"></div>
+            </div>
+          </div>
+        </div>
+
         <!-- Default: project jobs list -->
         <div id="proj-jobs-panel">
           <div id="proj-jobs-actions">
@@ -414,6 +435,61 @@
       <div class="modal-actions">
         <button class="modal-btn-cancel" id="btn-export-cancel">Cancel</button>
         <button class="btn btn-primary" id="btn-export-confirm">Render</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Asset browser modal -->
+  <div id="asset-browser-modal" class="modal-backdrop" hidden>
+    <div class="modal-box asset-browser-box" role="dialog" aria-modal="true" aria-labelledby="asset-browser-title">
+      <div class="asset-browser-header">
+        <h2 class="modal-title" id="asset-browser-title">Browse Server Assets</h2>
+        <button class="modal-close-btn" id="btn-asset-browser-close">✕</button>
+      </div>
+      <div class="asset-browser-tabs" id="asset-browser-tabs"></div>
+      <div class="asset-browser-toolbar">
+        <div class="asset-browser-search-wrap">
+          <input type="search" id="asset-browser-search" class="form-control" placeholder="Filter by name…">
+        </div>
+        <div class="asset-browser-controls">
+          <div class="pg-ctrl-group" id="ab-sort-group">
+            <button class="pg-ctrl-btn active" data-absort="name">A→Z</button>
+            <button class="pg-ctrl-btn" data-absort="name-desc">Z→A</button>
+            <button class="pg-ctrl-btn" data-absort="date">Newest</button>
+            <button class="pg-ctrl-btn" data-absort="date-asc">Oldest</button>
+          </div>
+          <div class="view-toggle">
+            <button class="view-btn active" id="asset-browser-view-grid" title="Grid view">
+              <svg viewBox="0 0 16 16" fill="currentColor"><path d="M1 1h6v6H1zm8 0h6v6H9zM1 9h6v6H1zm8 0h6v6H9z"/></svg>
+            </button>
+            <button class="view-btn" id="asset-browser-view-list" title="List view">
+              <svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 4h12v1.5H2zm0 3h12v1.5H2zm0 3h12v1.5H2z"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Two-panel content area -->
+      <div class="asset-browser-content">
+        <!-- Left: file browser -->
+        <div class="asset-browser-left">
+          <div class="asset-browser-breadcrumb" id="asset-browser-breadcrumb" hidden></div>
+          <div class="asset-browser-body" id="asset-browser-body">
+            <div class="asset-browser-empty">Select a source above</div>
+          </div>
+          <div class="asset-browser-footer">
+            <div class="asset-browser-pagination" id="asset-browser-pagination"></div>
+            <div class="asset-browser-status" id="asset-browser-status"></div>
+          </div>
+        </div>
+
+        <!-- Right: preview + import -->
+        <div class="asset-browser-preview" id="asset-browser-preview">
+          <div class="ab-preview-empty">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40" style="color:var(--sl-color-neutral-300)"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3 21h18"/></svg>
+            <p>Click a file to preview</p>
+          </div>
+        </div>
       </div>
     </div>
   </div>

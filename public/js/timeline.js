@@ -1,8 +1,22 @@
 // ── Constants ──────────────────────────────────────────────────
 const PX_PER_FRAME = [4, 12, 30, 80];
-const ROW_COUNT    = 4;
+const ROW_COUNT    = 3;
 const TRAIL_PX     = 300; // empty drop zone after last segment
 const RULER_H      = 22;  // px height of the ruler canvas
+
+const _TL_SECS_PER_FRAME   = 600 / 81;
+const _TL_RIFE2X_SECS      = 120;
+const _TL_QWEN_SECS        = 90;
+
+function _tlEstimatePct(job) {
+  if (!job?.startedAt) return null;
+  const elapsed  = (Date.now() - new Date(job.startedAt)) / 1000;
+  const jobType  = job.params?.jobType ?? '';
+  const estimated = jobType === 'rife-2x' ? _TL_RIFE2X_SECS
+    : jobType === 'qwen-edit' ? _TL_QWEN_SECS
+    : (job.params?.frameCount ?? 81) * _TL_SECS_PER_FRAME;
+  return Math.min(99, Math.round((elapsed / estimated) * 100));
+}
 
 // Alternating segment band colours
 const SEG_COLORS = [
@@ -104,7 +118,6 @@ function draw() {
 
   drawRowBackgrounds();
   drawSegments();
-  drawFrameThumbs();
   drawClipBoundaries();
   drawOverlays();
   drawRuler();
@@ -184,7 +197,7 @@ function drawRuler() {
 
 function drawEmpty() {
   const rh = rowH();
-  const rowBgs = ['#f9fafb', '#ffffff', '#f3f4f6', '#ffffff'];
+  const rowBgs = ['#f9fafb', '#ffffff', '#f3f4f6'];
   for (let i = 0; i < ROW_COUNT; i++) {
     ctx.fillStyle = rowBgs[i];
     ctx.fillRect(0, i * rh, W, rh);
@@ -212,7 +225,7 @@ function drawEmpty() {
 
 function drawRowBackgrounds() {
   const rh = rowH();
-  const colors = ['#f9fafb', '#ffffff', '#f3f4f6', '#ffffff'];
+  const colors = ['#f9fafb', '#ffffff', '#f3f4f6'];
   for (let i = 0; i < ROW_COUNT; i++) {
     ctx.fillStyle = colors[i];
     ctx.fillRect(0, i * rh, W, rh);
@@ -267,13 +280,18 @@ function drawSegments() {
       const effectiveFps = project.useSourceFps && clip?.fps ? clip.fps : (project.genFps ?? 24);
       const genFrames   = clip?.fps ? Math.round(seg.frameCount / clip.fps * effectiveFps) : (project.genFramesPerSegment ?? 81);
       const fpsLabel    = project.useSourceFps && clip?.fps ? `${clip.fps % 1 === 0 ? clip.fps : clip.fps.toFixed(2)} fps` : `${effectiveFps}fps`;
+      // First segment of each clip is always base; others depend on useBaseWorkflow flag
+      const prevSeg     = idx > 0 ? segLayout[idx - 1] : null;
+      const isFirstOfClip = !prevSeg || prevSeg.sourceClipId !== seg.sourceClipId;
+      const isBase      = isFirstOfClip || !!seg.useBaseWorkflow;
+      const workflowLabel = isBase ? 'Base Motion' : 'Extended Motion';
       ctx.fillStyle = '#374151';
       ctx.font = `11px system-ui, sans-serif`;
       ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       ctx.save();
       ctx.rect(Math.max(x, 0), segY, Math.min(w, W - Math.max(x, 0)), rh);
       ctx.clip();
-      ctx.fillText(`Segment ${idx + 1} . ${fpsLabel} . ${genFrames} Frames`, Math.max(x, 0) + 20, segY + rh / 2);
+      ctx.fillText(`Segment ${idx + 1} . ${fpsLabel} . ${genFrames} Frames | ${workflowLabel}`, Math.max(x, 0) + 20, segY + rh / 2);
       ctx.restore();
     }
 
@@ -381,9 +399,15 @@ function drawSegments() {
         ctx.restore();
       }
     } else if (jobStatus === 'running') {
-      const label = 'Running';
+      const pct   = _tlEstimatePct(activeJob);
+      const label = pct != null ? `~${pct}%` : 'Running';
       ctx.fillStyle = '#dbeafe';
       ctx.fillRect(x + 1, genY + 2, w - 2, rh - 4);
+      // Progress bar fill
+      if (pct != null && w > 4) {
+        ctx.fillStyle = '#bfdbfe';
+        ctx.fillRect(x + 1, genY + 2, Math.max(0, (w - 2) * pct / 100), rh - 4);
+      }
       ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 1.5;
       ctx.strokeRect(x + 1, genY + 2, w - 2, rh - 4);
       if (w > 20) {
@@ -683,6 +707,14 @@ canvas.addEventListener('click', e => {
     return;
   }
 
+  // Row 1 (ref) or Row 2 (seg) — show segment options
+  if (rowIdx === 1) {
+    selectedSegId = selectedSegId === seg.id ? null : seg.id;
+    draw();
+    document.dispatchEvent(new CustomEvent('segment:select', { detail: { segId: selectedSegId } }));
+    return;
+  }
+
   if (rowIdx === 2) {
     // Segs row — check if click is on the checkbox hit area
     const segX = seg.timelineStart * ppf() - scrollX;
@@ -697,14 +729,6 @@ canvas.addEventListener('click', e => {
     document.dispatchEvent(new CustomEvent('segment:select', { detail: { segId: selectedSegId } }));
     return;
   }
-
-  // Frames / other rows — select frame
-  const clipFrame = seg.startFrame + (tlFrame - seg.timelineStart);
-  window._selectedTLFrame = tlFrame;
-  draw();
-  document.dispatchEvent(new CustomEvent('frame:select', {
-    detail: { clipId: seg.sourceClipId, frameIndex: clipFrame }
-  }));
 });
 
 // ── Right-click context menu ───────────────────────────────────

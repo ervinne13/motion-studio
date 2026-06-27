@@ -873,6 +873,36 @@ async function onJobDone(job) {
   mobApply();
   const segNum = (job.params?.segmentIndex ?? 0) + 1;
   showToast(`Segment ${segNum} generation complete`, 'success');
+
+  // Auto-render when all segments are done and no more generation jobs are in flight
+  const allDone = project.segments.length > 0 && project.segments.every(s => s.generatedVideo);
+  const stillRunning = [..._jobs.values()].some(j =>
+    j.params?.projectId === projectId &&
+    j.params?.jobType !== 'qwen-edit' &&
+    j.params?.jobType !== 'rife-2x' &&
+    _ACTIVE_STATUSES.has(j.status)
+  );
+  if (allDone && !stillRunning) {
+    showToast('All segments done — auto-rendering…', 'info', 5000);
+    const includeAudio = document.getElementById('export-audio-check')?.checked ?? true;
+    const use2xFps     = document.getElementById('export-2xfps-check')?.checked ?? true;
+    try {
+      const r    = await fetch(`/api/project/${project.id}/export`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ includeAudio, use2xFps }),
+      });
+      const data = await r.json();
+      if (!r.ok) { showToast(data.error || 'Auto-render failed', 'error'); return; }
+      if (data.rife2xPending) {
+        watchJob(data.job);
+      } else {
+        _mobShowRenderHero(data.path, project.name);
+      }
+    } catch (e) {
+      showToast('Auto-render failed: ' + e.message, 'error');
+    }
+  }
 }
 
 // ── Job detail in right panel ──────────────────────────────────
@@ -1101,9 +1131,13 @@ function renderProjJobsDefault() {
     return { start, end };
   });
 
-  const bySegAsc = (a, b) => (a.params?.segmentIndex ?? 0) - (b.params?.segmentIndex ?? 0);
-  const activeJobs = projJobs.filter(j => _ACTIVE_STATUSES.has(j.status)).sort(bySegAsc);
-  const doneJobs   = projJobs.filter(j => !_ACTIVE_STATUSES.has(j.status)).sort(bySegAsc);
+  const bySegAsc  = (a, b) => (a.params?.segmentIndex ?? 0) - (b.params?.segmentIndex ?? 0);
+  const byNewest  = (a, b) => new Date(b.queuedAt ?? 0) - new Date(a.queuedAt ?? 0);
+
+  const renderJobs  = projJobs.filter(j => j.params?.jobType === 'rife-2x').sort(byNewest);
+  const segJobs     = projJobs.filter(j => j.params?.jobType !== 'rife-2x');
+  const activeSegs  = segJobs.filter(j =>  _ACTIVE_STATUSES.has(j.status)).sort(bySegAsc);
+  const doneSegs    = segJobs.filter(j => !_ACTIVE_STATUSES.has(j.status)).sort(bySegAsc);
 
   const renderItem = job => {
     const isRife2x = job.params?.jobType === 'rife-2x';
@@ -1133,11 +1167,19 @@ function renderProjJobsDefault() {
     </div>`;
   };
 
-  const sepHtml = (activeJobs.length > 0 && doneJobs.length > 0)
+  const segDivider = (activeSegs.length > 0 && doneSegs.length > 0)
     ? '<div class="jobs-separator">done</div>'
     : '';
+  const renderDivider = renderJobs.length > 0 && (activeSegs.length + doneSegs.length) > 0
+    ? '<hr class="jobs-section-hr">'
+    : '';
 
-  listEl.innerHTML = activeJobs.map(renderItem).join('') + sepHtml + doneJobs.map(renderItem).join('');
+  listEl.innerHTML =
+    renderJobs.map(renderItem).join('') +
+    renderDivider +
+    activeSegs.map(renderItem).join('') +
+    segDivider +
+    doneSegs.map(renderItem).join('');
 
   listEl.querySelectorAll('.proj-job-item').forEach(item => {
     item.addEventListener('click', () => {
@@ -1566,6 +1608,8 @@ function updateExportButton() {
 }
 
 document.getElementById('btn-export')?.addEventListener('click', () => {
+  document.getElementById('export-audio-check').checked  = true;
+  document.getElementById('export-2xfps-check').checked  = true;
   document.getElementById('export-modal').hidden = false;
 });
 
@@ -1936,6 +1980,8 @@ async function _mobLoadLatestRender() {
 }
 
 document.getElementById('mob-btn-export')?.addEventListener('click', () => {
+  document.getElementById('mob-export-audio-check').checked = true;
+  document.getElementById('mob-export-2xfps-check').checked = true;
   document.getElementById('mob-export-modal').hidden = false;
 });
 

@@ -59,8 +59,9 @@ function sortProjects(projects) {
   switch (_sort) {
     case 'alpha-asc':     return copy.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     case 'alpha-desc':    return copy.sort((a, b) => (b.name || '').localeCompare(a.name || ''));
-    case 'modified-desc': return copy.sort((a, b) => new Date(b.updatedAt ?? 0) - new Date(a.updatedAt ?? 0));
-    case 'modified-asc':  return copy.sort((a, b) => new Date(a.updatedAt ?? 0) - new Date(b.updatedAt ?? 0));
+    case 'modified-desc': return copy.sort((a, b) => new Date(b.createdAt ?? 0) - new Date(a.createdAt ?? 0));
+    case 'modified-asc':  return copy.sort((a, b) => new Date(a.createdAt ?? 0) - new Date(b.createdAt ?? 0));
+    case 'updated-desc':  return copy.sort((a, b) => new Date(b.updatedAt ?? b.createdAt ?? 0) - new Date(a.updatedAt ?? a.createdAt ?? 0));
     default: return copy;
   }
 }
@@ -144,15 +145,14 @@ function makeCard(p) {
   const total = p.segmentCount;
   const done  = p.doneCount;
   const pct   = total > 0 ? Math.round(done / total * 100) : 0;
-  const meta  = total > 0
-    ? `${done}/${total} Segment${total !== 1 ? 's' : ''}`
-    : 'No segments yet';
+  const segLabel      = total > 0 ? `${done}/${total} Segment${total !== 1 ? 's' : ''}` : 'No segments yet';
+  const renderedLabel = p.hasRender ? `<span class="proj-meta-rendered">Rendered</span>` : '';
 
   card.innerHTML = `
     <div class="proj-thumb-wrap">${thumbHtml(p)}</div>
     <div class="proj-info">
       <div class="proj-name" title="${escHtml(p.name)}">${escHtml(p.name)}</div>
-      <div class="proj-meta">${meta}</div>
+      <div class="proj-meta"><span>${segLabel}</span>${renderedLabel}</div>
       ${total > 0 ? `<div class="proj-progress"><div class="proj-progress-fill" style="width:${pct}%"></div></div>` : ''}
     </div>
     <button class="proj-archive" title="${_showArchived ? 'Unarchive' : 'Archive'}">${_showArchived ? unarchiveSvg : archiveSvg}</button>

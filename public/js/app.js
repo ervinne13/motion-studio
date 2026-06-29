@@ -251,6 +251,17 @@ document.getElementById('btn-new-project').addEventListener('click', async e => 
   location.href = `/projects/${p.id}`;
 });
 
+// Duplicate current project
+document.getElementById('btn-duplicate-project').addEventListener('click', async () => {
+  const id = localStorage.getItem('motionStudioProjectId');
+  if (!id) return;
+  const res = await fetch(`/api/project/${id}/duplicate`, { method: 'POST' });
+  if (!res.ok) { alert('Duplicate failed'); return; }
+  const p = await res.json();
+  localStorage.setItem('motionStudioProjectId', p.id);
+  location.href = `/projects/${p.id}`;
+});
+
 function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -489,7 +500,8 @@ document.getElementById('generate-modal').addEventListener('click', e => {
 document.getElementById('btn-gen-modal-confirm').addEventListener('click', async () => {
   const p = state.project;
   if (!p) return;
-  const clip = p.sourceClips[0];
+  const clipId = p.segments[0]?.sourceClipId;
+  const clip = p.sourceClips.find(c => c.id === clipId) ?? p.sourceClips[0];
   if (!clip) return;
 
   const name   = document.getElementById('gen-modal-name').value.trim() || 'untitled';

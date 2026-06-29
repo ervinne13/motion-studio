@@ -1,7 +1,7 @@
 {
   "201": {
     "inputs": {
-      "value": 16
+      "value": 30
     },
     "class_type": "PrimitiveFloat",
     "_meta": {
@@ -24,7 +24,7 @@
         0
       ],
       "loop_count": 0,
-      "filename_prefix": "motion-studio/",
+      "filename_prefix": "video/20260629/SCAIL2-Test",
       "format": "video/h264-mp4",
       "pix_fmt": "yuv420p",
       "crf": 19,
@@ -53,7 +53,7 @@
   },
   "210": {
     "inputs": {
-      "video": "7571604-uhd_2160_4096_25fps.mp4",
+      "video": "Shela Andriani - Dancing.mp4",
       "force_rate": [
         "201",
         0
@@ -78,7 +78,7 @@
   },
   "211": {
     "inputs": {
-      "image": "qwen-aio_00027_ (1).png"
+      "image": "pasted/image (69).png"
     },
     "class_type": "LoadImage",
     "_meta": {
@@ -87,7 +87,7 @@
   },
   "225": {
     "inputs": {
-      "file": "f68508-1782311236055_seg4_00001.mp4",
+      "file": "SCAIL2_00001_.mp4",
       "video-preview": ""
     },
     "class_type": "LoadVideo",
@@ -97,7 +97,7 @@
   },
   "228": {
     "inputs": {
-      "value": 49
+      "value": 157
     },
     "class_type": "PrimitiveInt",
     "_meta": {
@@ -106,14 +106,14 @@
   },
   "229": {
     "inputs": {
-      "value": 196
+      "value": 157
     },
     "class_type": "PrimitiveInt",
     "_meta": {
       "title": "Start Frame"
     }
   },
-  "227:220:162": {
+  "230": {
     "inputs": {
       "video": [
         "225",
@@ -123,359 +123,6 @@
     "class_type": "GetVideoComponents",
     "_meta": {
       "title": "Get Video Components"
-    }
-  },
-  "227:220:163": {
-    "inputs": {
-      "image": [
-        "227:220:162",
-        0
-      ]
-    },
-    "class_type": "GetImageSize",
-    "_meta": {
-      "title": "Get Image Size"
-    }
-  },
-  "227:220:164": {
-    "inputs": {
-      "batch_index": [
-        "227:220:165",
-        1
-      ],
-      "length": 1,
-      "image": [
-        "227:220:162",
-        0
-      ]
-    },
-    "class_type": "ImageFromBatch",
-    "_meta": {
-      "title": "Get Image from Batch"
-    }
-  },
-  "227:220:165": {
-    "inputs": {
-      "expression": "min(max(int(a if a >= 0 else b + a), 0), b - 1)",
-      "values.a": [
-        "227:220:166",
-        0
-      ],
-      "values.b": [
-        "227:220:163",
-        2
-      ]
-    },
-    "class_type": "ComfyMathExpression",
-    "_meta": {
-      "title": "Math Expression"
-    }
-  },
-  "227:220:166": {
-    "inputs": {
-      "value": -5
-    },
-    "class_type": "PrimitiveInt",
-    "_meta": {
-      "title": "Int"
-    }
-  },
-  "227:221:153": {
-    "inputs": {
-      "video": [
-        "225",
-        0
-      ]
-    },
-    "class_type": "GetVideoComponents",
-    "_meta": {
-      "title": "Get Video Components"
-    }
-  },
-  "227:221:154": {
-    "inputs": {
-      "image": [
-        "227:221:153",
-        0
-      ]
-    },
-    "class_type": "GetImageSize",
-    "_meta": {
-      "title": "Get Image Size"
-    }
-  },
-  "227:221:155": {
-    "inputs": {
-      "batch_index": [
-        "227:221:156",
-        1
-      ],
-      "length": 1,
-      "image": [
-        "227:221:153",
-        0
-      ]
-    },
-    "class_type": "ImageFromBatch",
-    "_meta": {
-      "title": "Get Image from Batch"
-    }
-  },
-  "227:221:156": {
-    "inputs": {
-      "expression": "min(max(int(a if a >= 0 else b + a), 0), b - 1)",
-      "values.a": [
-        "227:221:157",
-        0
-      ],
-      "values.b": [
-        "227:221:154",
-        2
-      ]
-    },
-    "class_type": "ComfyMathExpression",
-    "_meta": {
-      "title": "Math Expression"
-    }
-  },
-  "227:221:157": {
-    "inputs": {
-      "value": -4
-    },
-    "class_type": "PrimitiveInt",
-    "_meta": {
-      "title": "Int"
-    }
-  },
-  "227:222:146": {
-    "inputs": {
-      "video": [
-        "225",
-        0
-      ]
-    },
-    "class_type": "GetVideoComponents",
-    "_meta": {
-      "title": "Get Video Components"
-    }
-  },
-  "227:222:147": {
-    "inputs": {
-      "image": [
-        "227:222:146",
-        0
-      ]
-    },
-    "class_type": "GetImageSize",
-    "_meta": {
-      "title": "Get Image Size"
-    }
-  },
-  "227:222:148": {
-    "inputs": {
-      "batch_index": [
-        "227:222:149",
-        1
-      ],
-      "length": 1,
-      "image": [
-        "227:222:146",
-        0
-      ]
-    },
-    "class_type": "ImageFromBatch",
-    "_meta": {
-      "title": "Get Image from Batch"
-    }
-  },
-  "227:222:149": {
-    "inputs": {
-      "expression": "min(max(int(a if a >= 0 else b + a), 0), b - 1)",
-      "values.a": [
-        "227:222:150",
-        0
-      ],
-      "values.b": [
-        "227:222:147",
-        2
-      ]
-    },
-    "class_type": "ComfyMathExpression",
-    "_meta": {
-      "title": "Math Expression"
-    }
-  },
-  "227:222:150": {
-    "inputs": {
-      "value": -3
-    },
-    "class_type": "PrimitiveInt",
-    "_meta": {
-      "title": "Int"
-    }
-  },
-  "227:223:139": {
-    "inputs": {
-      "video": [
-        "225",
-        0
-      ]
-    },
-    "class_type": "GetVideoComponents",
-    "_meta": {
-      "title": "Get Video Components"
-    }
-  },
-  "227:223:140": {
-    "inputs": {
-      "image": [
-        "227:223:139",
-        0
-      ]
-    },
-    "class_type": "GetImageSize",
-    "_meta": {
-      "title": "Get Image Size"
-    }
-  },
-  "227:223:141": {
-    "inputs": {
-      "batch_index": [
-        "227:223:142",
-        1
-      ],
-      "length": 1,
-      "image": [
-        "227:223:139",
-        0
-      ]
-    },
-    "class_type": "ImageFromBatch",
-    "_meta": {
-      "title": "Get Image from Batch"
-    }
-  },
-  "227:223:142": {
-    "inputs": {
-      "expression": "min(max(int(a if a >= 0 else b + a), 0), b - 1)",
-      "values.a": [
-        "227:223:143",
-        0
-      ],
-      "values.b": [
-        "227:223:140",
-        2
-      ]
-    },
-    "class_type": "ComfyMathExpression",
-    "_meta": {
-      "title": "Math Expression"
-    }
-  },
-  "227:223:143": {
-    "inputs": {
-      "value": -2
-    },
-    "class_type": "PrimitiveInt",
-    "_meta": {
-      "title": "Int"
-    }
-  },
-  "227:224:2": {
-    "inputs": {
-      "video": [
-        "225",
-        0
-      ]
-    },
-    "class_type": "GetVideoComponents",
-    "_meta": {
-      "title": "Get Video Components"
-    }
-  },
-  "227:224:219": {
-    "inputs": {
-      "image": [
-        "227:224:2",
-        0
-      ]
-    },
-    "class_type": "GetImageSize",
-    "_meta": {
-      "title": "Get Image Size"
-    }
-  },
-  "227:224:4": {
-    "inputs": {
-      "batch_index": [
-        "227:224:99",
-        1
-      ],
-      "length": 1,
-      "image": [
-        "227:224:2",
-        0
-      ]
-    },
-    "class_type": "ImageFromBatch",
-    "_meta": {
-      "title": "Get Image from Batch"
-    }
-  },
-  "227:224:99": {
-    "inputs": {
-      "expression": "min(max(int(a if a >= 0 else b + a), 0), b - 1)",
-      "values.a": [
-        "227:224:100",
-        0
-      ],
-      "values.b": [
-        "227:224:219",
-        2
-      ]
-    },
-    "class_type": "ComfyMathExpression",
-    "_meta": {
-      "title": "Math Expression"
-    }
-  },
-  "227:224:100": {
-    "inputs": {
-      "value": -1
-    },
-    "class_type": "PrimitiveInt",
-    "_meta": {
-      "title": "Int"
-    }
-  },
-  "227:226": {
-    "inputs": {
-      "inputcount": 5,
-      "Update inputs": null,
-      "image_1": [
-        "227:220:164",
-        0
-      ],
-      "image_2": [
-        "227:221:155",
-        0
-      ],
-      "image_3": [
-        "227:222:148",
-        0
-      ],
-      "image_4": [
-        "227:223:141",
-        0
-      ],
-      "image_5": [
-        "227:224:4",
-        0
-      ]
-    },
-    "class_type": "ImageBatchMulti",
-    "_meta": {
-      "title": "Image Batch Multi"
     }
   },
   "209:102": {
@@ -659,7 +306,7 @@
     "inputs": {
       "object_indices": "",
       "sort_by": "area",
-      "replacement_mode": false,
+      "replacement_mode": true,
       "driving_track_data": [
         "209:112",
         0
@@ -825,7 +472,7 @@
       "pose_end": 1,
       "video_frame_offset": 0,
       "previous_frame_count": 5,
-      "replacement_mode": false,
+      "replacement_mode": true,
       "positive": [
         "209:6",
         0
@@ -859,7 +506,7 @@
         0
       ],
       "previous_frames": [
-        "227:226",
+        "230",
         0
       ]
     },

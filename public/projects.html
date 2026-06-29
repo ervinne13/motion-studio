@@ -152,6 +152,13 @@
     .proj-meta {
       font-size: 11px;
       color: var(--sl-color-neutral-400);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .proj-meta-rendered {
+      color: var(--sl-color-success-600);
+      font-weight: 500;
     }
     .proj-progress {
       margin-top: 8px;
@@ -344,6 +351,7 @@
           <button class="pg-ctrl-btn" data-sort="alpha-desc">Z→A</button>
           <button class="pg-ctrl-btn" data-sort="modified-desc">Newest</button>
           <button class="pg-ctrl-btn" data-sort="modified-asc">Oldest</button>
+          <button class="pg-ctrl-btn" data-sort="updated-desc">Last Updated</button>
         </div>
         <div class="pg-ctrl-group" id="view-group">
           <button class="pg-ctrl-btn" data-view="grid" title="Grid view">

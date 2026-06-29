@@ -1,7 +1,7 @@
 import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { readdir, rm, stat } from 'fs/promises';
+import { readdir, rm, stat, cp } from 'fs/promises';
 import multer from 'multer';
 import dotenv from 'dotenv';
 import { randomUUID } from 'crypto';
@@ -88,7 +88,9 @@ app.get('/api/projects', async (req, res) => {
           mode:         p.mode,
           thumbnail,
           refImage,
-          updatedAt:    fileInfo?.mtime?.toISOString() ?? null,
+          createdAt:    p.createdAt ?? null,
+          updatedAt:    p.updatedAt ?? fileInfo?.mtime?.toISOString() ?? null,
+          hasRender:    has2xPreview,
         });
       } catch { /* skip corrupted */ }
     }
@@ -148,6 +150,42 @@ app.delete('/api/project/:id', async (req, res) => {
   try {
     await rm(projectDir(id), { recursive: true, force: true });
     res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Duplicate project ──────────────────────────────────────────
+app.post('/api/project/:id/duplicate', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const src = await loadProject(id);
+
+    // Build a unique copy name: "Name Copy", "Name Copy 2", …
+    const baseName = src.name.replace(/ Copy(?: \d+)?$/, '');
+    const allProjects = await readdir(join(DATA_DIR, 'projects'));
+    const existingNames = new Set();
+    for (const pid of allProjects) {
+      try { const p = await loadProject(pid); existingNames.add(p.name); } catch { /* skip */ }
+    }
+    let copyName = `${baseName} Copy`;
+    let n = 2;
+    while (existingNames.has(copyName)) { copyName = `${baseName} Copy ${n++}`; }
+
+    // New project directory
+    const newId = randomUUID().slice(0, 8);
+    const srcDir = projectDir(id);
+    const dstDir = projectDir(newId);
+    await cp(srcDir, dstDir, { recursive: true });
+
+    // Patch the copied project.json
+    const newProject = { ...src, id: newId, name: copyName, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    // Clear generated assets and segment results so it starts fresh
+    newProject.generatedAssets = [];
+    newProject.segments = (src.segments ?? []).map(s => ({ ...s, generatedVideo: null, id: `seg-${randomUUID().slice(0, 8)}` }));
+
+    await saveProject(newProject);
+    res.json(newProject);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -372,6 +410,7 @@ app.delete('/api/project/:id/segments', async (req, res) => {
     const project = await withProjectLock(id, async () => {
       const project = await loadProject(id);
       project.segments = [];
+      project.sourceClips = [];
       await saveProject(project);
       return project;
     });
@@ -570,31 +609,13 @@ app.post('/api/project/:id/generate', async (req, res) => {
     let prevJobId = null;
     const batchId = `${id.slice(0, 6)}-${Date.now()}`;
 
-    // If the first selected segment is mid-stream, seed prevComfyFilename from the previous segment's stored value
+    // If the first selected segment is mid-stream, resolve the previous segment's local output path.
     const firstSegmentIndex = clipSegs.length ? allClipSegs.indexOf(clipSegs[0]) : 0;
-    let batchStartPrevComfy = firstSegmentIndex > 0
-      ? (allClipSegs[firstSegmentIndex - 1].comfyInputFilename ?? null)
-      : null;
-
-    // Fallback: if the previous segment has a generatedVideo but no comfyInputFilename stored
-    // (e.g. older jobs, or data lost on restart), re-upload it to ComfyUI now.
-    if (firstSegmentIndex > 0 && !batchStartPrevComfy) {
+    let batchStartPrevOutputPath = null;
+    if (firstSegmentIndex > 0) {
       const prevSeg = allClipSegs[firstSegmentIndex - 1];
       if (prevSeg?.generatedVideo) {
-        const prevVideoPath = join(projectDir(id), 'generated', prevSeg.generatedVideo);
-        try {
-          batchStartPrevComfy = await comfyUploadVideo(prevVideoPath);
-          // Persist so future batches don't need to re-upload
-          await withProjectLock(id, async () => {
-            const p = await loadProject(id);
-            const seg = p.segments.find(s => s.id === prevSeg.id);
-            if (seg) seg.comfyInputFilename = batchStartPrevComfy;
-            await saveProject(p);
-          });
-          console.log(`[generate] re-uploaded prev seg video → comfyInputFilename=${batchStartPrevComfy}`);
-        } catch (e) {
-          console.warn(`[generate] failed to re-upload prev seg video: ${e.message}`);
-        }
+        batchStartPrevOutputPath = join(projectDir(id), 'generated', prevSeg.generatedVideo);
       }
     }
 
@@ -628,8 +649,8 @@ app.post('/api/project/:id/generate', async (req, res) => {
         outputPath,
         jobPrefix:              `motion-studio/${batchId}_seg${segmentIndex + 1}`,
         clipFps:                clip.fps,
-        // For the first job in a mid-stream batch, supply the prior segment's ComfyUI filename directly
-        ...(i === 0 && batchStartPrevComfy && !(seg.useBaseWorkflow) ? { prevComfyFilename: batchStartPrevComfy } : {}),
+        // For the first job in a mid-stream batch, supply the prior segment's local output path directly
+        ...(i === 0 && batchStartPrevOutputPath && !(seg.useBaseWorkflow) ? { prevOutputLocalPath: batchStartPrevOutputPath } : {}),
       };
 
       const job = await enqueue(params, prevJobId);
@@ -920,10 +941,15 @@ app.get('/api/asset-browser', async (req, res) => {
     const sortedFiles = byDate
       ? await (async () => {
           const withStat = await Promise.all(files.map(async f => {
-            try { const s = await stat(join(dir, f)); return { name: f, mtime: s.mtimeMs }; }
-            catch { return { name: f, mtime: 0 }; }
+            try {
+              const s = await stat(join(dir, f));
+              // prefer birthtime (creation); fall back to mtime if birthtime is epoch (Linux ext4)
+              const ts = s.birthtimeMs > 0 ? s.birthtimeMs : s.mtimeMs;
+              return { name: f, ts };
+            }
+            catch { return { name: f, ts: 0 }; }
           }));
-          const cmp = sort === 'date-asc' ? (a, b) => a.mtime - b.mtime : (a, b) => b.mtime - a.mtime;
+          const cmp = sort === 'date-asc' ? (a, b) => a.ts - b.ts : (a, b) => b.ts - a.ts;
           return withStat.sort(cmp).map(x => x.name);
         })()
       : sort === 'name-desc'
@@ -1069,7 +1095,6 @@ async function syncJobToProject(job) {
       const activeTime = activeAsset ? new Date(activeAsset.createdAt ?? 0).getTime() : 0;
       if (jobTime >= activeTime) {
         seg.generatedVideo = filename;
-        if (job.result.comfyInputFilename) seg.comfyInputFilename = job.result.comfyInputFilename;
       } else {
         console.log(`[server] syncJobToProject: skipping ${filename} — older than current active ${seg.generatedVideo}`);
         return;

@@ -813,6 +813,40 @@ app.post('/api/project/:id/export', async (req, res) => {
 });
 
 // ── List export files for a project ───────────────────────────
+// POST /api/project/:id/upscale-segments
+// Queues an ESRGAN 2x job for every done segment that doesn't already have a _2x file.
+app.post('/api/project/:id/upscale-segments', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const project = await loadProject(id);
+    const { stat } = await import('fs/promises');
+    const genDir   = join(projectDir(id), 'generated');
+    const done     = project.segments.filter(s => s.generatedVideo);
+    const jobs     = [];
+
+    for (const seg of done) {
+      const origPath     = join(genDir, seg.generatedVideo);
+      const upscaledPath = origPath.replace(/\.mp4$/i, '_2x.mp4');
+      const alreadyDone  = await stat(upscaledPath).then(() => true).catch(() => false);
+      if (alreadyDone) continue;
+      const job = await enqueue({
+        jobType:     'esrgan-2x',
+        projectId:   id,
+        projectName: project.name,
+        inputPath:   origPath,
+        outputPath:  upscaledPath,
+        retryOnFailure: project.retryOnFailure ?? false,
+      });
+      jobs.push(job);
+    }
+
+    res.json({ jobs, skipped: done.length - jobs.length });
+  } catch (e) {
+    console.error('Upscale segments error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/project/:id/exports', async (req, res) => {
   const { id } = req.params;
   try {

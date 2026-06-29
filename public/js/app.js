@@ -2283,6 +2283,29 @@ function _setQueuePausedUI(paused) {
 
 fetch('/api/queue-status').then(r => r.json()).then(d => _setQueuePausedUI(d.paused)).catch(() => {});
 
+document.getElementById('btn-upscale-done')?.addEventListener('click', async () => {
+  const p = state.project;
+  if (!p) return;
+  const btn = document.getElementById('btn-upscale-done');
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/project/${p.id}/upscale-segments`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) { showToast(data.error || 'Upscale failed', 'error'); return; }
+    if (data.jobs.length === 0) {
+      showToast(`All segments already upscaled (${data.skipped} skipped)`, 'info');
+      return;
+    }
+    [...data.jobs].reverse().forEach(watchJob);
+    _forceReconnectStream();
+    showToast(`Queued ${data.jobs.length} upscale job(s)${data.skipped ? `, ${data.skipped} already done` : ''}`, 'success');
+  } catch (e) {
+    showToast('Upscale error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 document.getElementById('btn-pause-all')?.addEventListener('click', async () => {
   const isPaused = document.getElementById('btn-pause-all').classList.contains('paused');
   const res = await fetch(`/api/jobs/${isPaused ? 'resume' : 'pause'}-all`, { method: 'POST' });

@@ -1,0 +1,92 @@
+{
+  "2": {
+    "inputs": {
+      "file": "seg1_118a76-1782736846528.mp4",
+      "video-preview": ""
+    },
+    "class_type": "LoadVideo",
+    "_meta": {
+      "title": "Input Video"
+    }
+  },
+  "3": {
+    "inputs": {
+      "video": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "GetVideoComponents",
+    "_meta": {
+      "title": "Get Video Components"
+    }
+  },
+  "4": {
+    "inputs": {
+      "model_name": "RealESRGAN_x4plus.safetensors"
+    },
+    "class_type": "UpscaleModelLoader",
+    "_meta": {
+      "title": "Load ESRGAN Model"
+    }
+  },
+  "5": {
+    "inputs": {
+      "upscale_model": [
+        "4",
+        0
+      ],
+      "image": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "ImageUpscaleWithModel",
+    "_meta": {
+      "title": "Upscale 4x (ESRGAN)"
+    }
+  },
+  "6": {
+    "inputs": {
+      "upscale_method": "lanczos",
+      "scale_by": 0.5,
+      "image": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "ImageScaleBy",
+    "_meta": {
+      "title": "Scale Down to 2x"
+    }
+  },
+  "7": {
+    "inputs": {
+      "frame_rate": [
+        "3",
+        2
+      ],
+      "loop_count": 0,
+      "filename_prefix": "motion-studio/ESRGAN-2x",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 18,
+      "save_metadata": false,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "6",
+        0
+      ],
+      "audio": [
+        "3",
+        1
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Output Video"
+    }
+  }
+}

@@ -430,6 +430,26 @@
           <input type="checkbox" id="gen-modal-retry" checked>
           <label for="gen-modal-retry" style="margin:0;cursor:pointer;font-size:12px;font-weight:600;color:var(--sl-color-neutral-700)">Retry on failure</label>
         </div>
+        <div style="border-top:1px solid var(--sl-color-neutral-200);padding-top:10px;display:flex;flex-direction:column;gap:8px">
+          <div style="flex-direction:row;align-items:center;gap:8px;display:flex">
+            <input type="checkbox" id="gen-modal-auto-render">
+            <label for="gen-modal-auto-render" style="margin:0;cursor:pointer;font-size:12px;font-weight:600;color:var(--sl-color-neutral-700)">Auto Render On Finish</label>
+          </div>
+          <div id="gen-modal-render-opts" style="display:none;flex-direction:column;gap:6px;padding-left:20px">
+            <div style="flex-direction:row;align-items:center;gap:8px;display:flex">
+              <input type="checkbox" id="gen-modal-audio">
+              <label for="gen-modal-audio" style="margin:0;cursor:pointer;font-size:12px;color:var(--sl-color-neutral-600)">Include audio from source video</label>
+            </div>
+            <div style="flex-direction:row;align-items:center;gap:8px;display:flex">
+              <input type="checkbox" id="gen-modal-upscale" checked>
+              <label for="gen-modal-upscale" style="margin:0;cursor:pointer;font-size:12px;color:var(--sl-color-neutral-600)">2x Upscale per segment (ESRGAN)</label>
+            </div>
+            <div style="flex-direction:row;align-items:center;gap:8px;display:flex">
+              <input type="checkbox" id="gen-modal-rife" checked>
+              <label for="gen-modal-rife" style="margin:0;cursor:pointer;font-size:12px;color:var(--sl-color-neutral-600)">2x FPS Frame Interpolation</label>
+            </div>
+          </div>
+        </div>
         <div class="field-group">
           <label for="gen-modal-resolution" style="font-size:12px;font-weight:600;color:var(--sl-color-neutral-700)">Resolution</label>
           <select class="form-control" id="gen-modal-resolution">

@@ -576,7 +576,7 @@ app.post('/api/project/:id/segments/:segId/duplicate', async (req, res) => {
 // Returns { jobs: [...] } — one job per segment, chained via dependsOn
 app.post('/api/project/:id/generate', async (req, res) => {
   const { id } = req.params;
-  const { clipId, prompt = '', seed, segIds, megapixels, retryOnFailure } = req.body;
+  const { clipId, prompt = '', seed, segIds, megapixels, retryOnFailure, autoRenderOnFinish = false, includeAudio = false, use2xUpscale = false, use2xFps = false } = req.body;
 
   try {
     const project = await loadProject(id);
@@ -608,7 +608,8 @@ app.post('/api/project/:id/generate', async (req, res) => {
 
     let lastRef   = defaultRef;
     const jobs    = [];
-    let prevJobId = null;
+    let prevJobId = null;   // next segment's dependency (for prevOutputLocalPath chain)
+    let lastJobId = null;   // last queued job overall (for auto-render dependency)
     const batchId = `${id.slice(0, 6)}-${Date.now()}`;
 
     // If the first selected segment is mid-stream, resolve the previous segment's local output path.
@@ -659,11 +660,39 @@ app.post('/api/project/:id/generate', async (req, res) => {
 
       const job = await enqueue(params, prevJobId);
       prevJobId = job.id;
+      lastJobId = job.id;
       jobs.push(job);
       // Server-side hook: update segment when job completes (don't rely solely on browser SSE)
       subscribeJob(job.id, async updated => {
         if (updated.status === 'done') await syncJobToProject(updated).catch(() => {});
       });
+
+      if (use2xUpscale) {
+        const upscaledPath = outputPath.replace(/\.mp4$/i, '_2x.mp4');
+        const esrganJob = await enqueue({
+          jobType:     'esrgan-2x',
+          projectId:   id,
+          projectName: project.name,
+          inputPath:   outputPath,
+          outputPath:  upscaledPath,
+          retryOnFailure: resolvedRetryOnFailure,
+        }, job.id);
+        lastJobId = esrganJob.id;
+        jobs.push(esrganJob);
+      }
+    }
+
+    if (autoRenderOnFinish && lastJobId) {
+      const renderJob = await enqueue({
+        jobType:        'auto-render',
+        projectId:      id,
+        projectName:    project.name,
+        use2xUpscale,
+        includeAudio,
+        use2xFps,
+        retryOnFailure: resolvedRetryOnFailure,
+      }, lastJobId);
+      jobs.push(renderJob);
     }
 
     res.json({ jobs });

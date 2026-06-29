@@ -494,6 +494,11 @@ document.getElementById('btn-generate').addEventListener('click', () => {
   document.getElementById('gen-modal-prompt').focus();
 });
 
+document.getElementById('gen-modal-auto-render')?.addEventListener('change', e => {
+  const opts = document.getElementById('gen-modal-render-opts');
+  if (opts) opts.style.display = e.target.checked ? 'flex' : 'none';
+});
+
 document.getElementById('btn-gen-modal-cancel').addEventListener('click', () => {
   document.getElementById('generate-modal').hidden = true;
 });
@@ -513,8 +518,12 @@ document.getElementById('btn-gen-modal-confirm').addEventListener('click', async
   const name       = document.getElementById('gen-modal-name').value.trim() || 'untitled';
   const mode       = document.getElementById('gen-modal-mode').value;
   const prompt     = document.getElementById('gen-modal-prompt').value.trim();
-  const resolution    = document.getElementById('gen-modal-resolution').value;
-  const retryOnFail   = document.getElementById('gen-modal-retry').checked;
+  const resolution        = document.getElementById('gen-modal-resolution').value;
+  const retryOnFail       = document.getElementById('gen-modal-retry').checked;
+  const autoRenderOnFinish = document.getElementById('gen-modal-auto-render').checked;
+  const includeAudio      = document.getElementById('gen-modal-audio').checked;
+  const use2xUpscale      = document.getElementById('gen-modal-upscale').checked;
+  const use2xFps          = document.getElementById('gen-modal-rife').checked;
 
   document.getElementById('generate-modal').hidden = true;
 
@@ -546,6 +555,10 @@ document.getElementById('btn-gen-modal-confirm').addEventListener('click', async
         prompt: prompt || undefined,
         megapixels: resolution,
         retryOnFailure: retryOnFail,
+        autoRenderOnFinish,
+        includeAudio,
+        use2xUpscale,
+        use2xFps,
         segIds: p.segments.filter(s => s.selected).map(s => s.id),
       }),
     });

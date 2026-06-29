@@ -2178,11 +2178,12 @@ document.getElementById('mob-export-cancel')?.addEventListener('click', () => {
 document.getElementById('mob-export-confirm')?.addEventListener('click', async () => {
   const p = state.project;
   if (!p) return;
-  const includeAudio = document.getElementById('mob-export-audio-check').checked;
-  const use2xFps   = document.getElementById('mob-export-2xfps-check').checked;
-  const modal      = document.getElementById('mob-export-modal');
-  const confirmBtn = document.getElementById('mob-export-confirm');
-  const renderBtn  = document.getElementById('mob-btn-export');
+  const includeAudio  = document.getElementById('mob-export-audio-check').checked;
+  const use2xFps      = document.getElementById('mob-export-2xfps-check').checked;
+  const use2xUpscale  = document.getElementById('mob-export-upscale-check')?.checked ?? true;
+  const modal         = document.getElementById('mob-export-modal');
+  const confirmBtn    = document.getElementById('mob-export-confirm');
+  const renderBtn     = document.getElementById('mob-btn-export');
 
   modal.hidden = true;
   confirmBtn.disabled = true;
@@ -2192,7 +2193,7 @@ document.getElementById('mob-export-confirm')?.addEventListener('click', async (
     const res = await fetch(`/api/project/${p.id}/export`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ includeAudio, use2xFps }),
+      body: JSON.stringify({ includeAudio, use2xFps, use2xUpscale }),
     });
     const data = await res.json();
     if (!res.ok) { showToast(data.error || 'Render failed', 'error'); return; }

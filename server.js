@@ -358,6 +358,7 @@ app.post('/api/project/:id/resync', async (req, res) => {
     let synced = 0;
     for (const job of relevant) {
       if (job.params?.jobType === 'qwen-edit') await syncQwenJobToProject(job);
+      else if (job.params?.jobType === 'esrgan-2x') await syncEsrganJobToProject(job);
       else await syncJobToProject(job);
       synced++;
     }

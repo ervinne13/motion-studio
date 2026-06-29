@@ -2329,6 +2329,32 @@ document.getElementById('btn-pause-all')?.addEventListener('click', async () => 
   }
 });
 
+document.getElementById('btn-clear-pending')?.addEventListener('click', () => {
+  document.getElementById('clear-pending-modal').hidden = false;
+});
+
+document.getElementById('btn-clear-pending-cancel')?.addEventListener('click', () => {
+  document.getElementById('clear-pending-modal').hidden = true;
+});
+
+document.getElementById('btn-clear-pending-confirm')?.addEventListener('click', async () => {
+  const modal = document.getElementById('clear-pending-modal');
+  const btn   = document.getElementById('btn-clear-pending-confirm');
+  modal.hidden = true;
+  btn.disabled = true;
+  try {
+    const res  = await fetch('/api/jobs/cancel-pending', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) { showToast(data.error || 'Failed to cancel jobs', 'error'); return; }
+    showToast(`Cancelled ${data.cancelled} pending job${data.cancelled === 1 ? '' : 's'}`, 'success');
+    setTimeout(() => document.getElementById('btn-refresh-logs')?.click(), 400);
+  } catch (e) {
+    showToast('Failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 // ── Asset browser ─────────────────────────────────────────────
 let _abRoot      = null;
 let _abSubpath   = '';

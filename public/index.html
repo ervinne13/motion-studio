@@ -299,6 +299,10 @@
         <!-- Default: project jobs list -->
         <div id="proj-jobs-panel">
           <div id="proj-jobs-actions">
+            <button class="pause-all-btn danger-btn" id="btn-clear-pending" title="Cancel all pending jobs">
+              <svg viewBox="0 0 20 20" fill="currentColor" width="13" height="13"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+              Clear Pending
+            </button>
             <button class="pause-all-btn" id="btn-upscale-done" title="Queue ESRGAN 2x upscale for all done segments">
               <svg viewBox="0 0 20 20" fill="currentColor" width="13" height="13"><path fill-rule="evenodd" d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L4.707 9.707a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg>
               Upscale Done
@@ -491,6 +495,21 @@
       <div class="modal-actions">
         <button class="modal-btn-cancel" id="btn-export-cancel">Cancel</button>
         <button class="btn btn-primary" id="btn-export-confirm">Render</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Clear pending jobs modal -->
+  <div id="clear-pending-modal" class="modal-backdrop" hidden>
+    <div class="modal-box" role="dialog" aria-modal="true">
+      <h2 class="modal-title">Clear Pending Jobs?</h2>
+      <p style="color:var(--sl-color-neutral-600);font-size:0.875rem;margin:0 0 20px">
+        This will cancel all <strong>pending and waiting</strong> jobs across all projects.
+        Jobs currently running will not be interrupted.
+      </p>
+      <div class="modal-actions">
+        <button class="modal-btn-cancel" id="btn-clear-pending-cancel">Keep Jobs</button>
+        <button class="btn" style="background:var(--sl-color-danger-600);color:#fff" id="btn-clear-pending-confirm">Cancel All Pending</button>
       </div>
     </div>
   </div>

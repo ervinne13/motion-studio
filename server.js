@@ -14,7 +14,7 @@ import {
   createProject, loadProject, saveProject, withProjectLock,
   computeSegments, uploadsDir, thumbsDir, projectDir,
 } from './lib/project.js';
-import { enqueue, getJob, getTodayJobs, getAllDoneJobs, subscribeJob, subscribeAll, cancelJob, forceRelease, resumeOnStartup, pauseAllJobs, resumeAllJobs, isQueuePaused } from './lib/queue.js';
+import { enqueue, getJob, getTodayJobs, getAllDoneJobs, subscribeJob, subscribeAll, cancelJob, cancelAllPending, forceRelease, resumeOnStartup, pauseAllJobs, resumeAllJobs, isQueuePaused } from './lib/queue.js';
 import { generateQwenEdit } from './lib/generate.js';
 import { uploadVideo as comfyUploadVideo } from './lib/comfyui.js';
 
@@ -978,6 +978,13 @@ app.delete('/api/jobs/:jobId', async (req, res) => {
   const job = await cancelJob(req.params.jobId);
   if (!job) return res.status(404).json({ error: 'Job not found' });
   res.json({ job });
+});
+
+app.post('/api/jobs/cancel-pending', async (req, res) => {
+  try {
+    const count = await cancelAllPending();
+    res.json({ cancelled: count });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/jobs/:jobId/retry', async (req, res) => {

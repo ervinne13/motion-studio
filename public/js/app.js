@@ -289,14 +289,16 @@ function renderAssetList() {
     genList.innerHTML = '<div class="empty-assets">No generated assets</div>';
   } else {
     genList.innerHTML = '';
-    // Sort by segmentIndex then version
-    const sorted = [...assets].sort((a, b) =>
-      a.segmentIndex !== b.segmentIndex ? a.segmentIndex - b.segmentIndex : a.version - b.version
-    );
+    // Sort: by segmentIndex, then original before 2x, then version
+    const sorted = [...assets].sort((a, b) => {
+      if ((a.segmentIndex ?? 0) !== (b.segmentIndex ?? 0)) return (a.segmentIndex ?? 0) - (b.segmentIndex ?? 0);
+      if (!!a.is2x !== !!b.is2x) return a.is2x ? 1 : -1;
+      return (a.version ?? 0) - (b.version ?? 0);
+    });
     sorted.forEach(asset => {
-      const seg   = p.segments.find(s => s.id === asset.segId);
+      const seg    = p.segments.find(s => s.id === asset.segId);
       const segNum = (asset.segmentIndex ?? 0) + 1;
-      const label  = asset.version === 0 ? `Seg ${segNum}` : `Seg ${segNum}.${asset.version}`;
+      const label  = asset.is2x ? `Seg ${segNum} 2x` : (asset.version === 0 ? `Seg ${segNum}` : `Seg ${segNum}.${asset.version}`);
       const isActive = seg?.generatedVideo === asset.filename;
       genList.appendChild(makeGenAssetItem(asset, label, isActive, p.id));
     });
@@ -1809,8 +1811,9 @@ document.getElementById('btn-export-confirm')?.addEventListener('click', async (
   if (!p) return;
   const modal      = document.getElementById('export-modal');
   const confirm    = document.getElementById('btn-export-confirm');
-  const includeAudio = document.getElementById('export-audio-check').checked;
-  const use2xFps   = document.getElementById('export-2xfps-check').checked;
+  const includeAudio  = document.getElementById('export-audio-check').checked;
+  const use2xUpscale  = document.getElementById('export-upscale-check')?.checked ?? true;
+  const use2xFps      = document.getElementById('export-2xfps-check').checked;
   modal.hidden = true;
   confirm.loading = true;
   confirm.disabled = true;
@@ -1818,7 +1821,7 @@ document.getElementById('btn-export-confirm')?.addEventListener('click', async (
     const res = await fetch(`/api/project/${p.id}/export`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ includeAudio, use2xFps }),
+      body: JSON.stringify({ includeAudio, use2xUpscale, use2xFps }),
     });
     const data = await res.json();
     if (!res.ok) { alert(data.error || 'Render failed'); return; }

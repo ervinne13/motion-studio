@@ -752,17 +752,24 @@ app.post('/api/project/:id/frame-edit', async (req, res) => {
 // POST /api/project/:id/export
 app.post('/api/project/:id/export', async (req, res) => {
   const { id } = req.params;
-  const { includeAudio = false, use2xFps = false } = req.body ?? {};
+  const { includeAudio = false, use2xFps = false, use2xUpscale = false } = req.body ?? {};
   try {
     const project  = await loadProject(id);
     const genSegs  = project.segments.filter(s => s.generatedVideo && s.selected !== false);
     if (!genSegs.length) return res.status(400).json({ error: 'No generated segments to export' });
 
-    const { mkdir } = await import('fs/promises');
+    const { mkdir, stat } = await import('fs/promises');
     const genDir    = join(projectDir(id), 'generated');
     await mkdir(genDir, { recursive: true });
 
-    const inputs     = genSegs.map(s => join(genDir, s.generatedVideo));
+    const inputs = await Promise.all(genSegs.map(async s => {
+      const orig = join(genDir, s.generatedVideo);
+      if (use2xUpscale) {
+        const up = orig.replace(/\.mp4$/i, '_2x.mp4');
+        return await stat(up).then(() => up).catch(() => orig);
+      }
+      return orig;
+    }));
     const stamp      = Date.now();
     const concatFile = `export_${stamp}_concat.mp4`;
     const concatPath = join(genDir, concatFile);
@@ -1176,6 +1183,38 @@ async function syncJobToProject(job) {
   } catch { /* project may have been deleted */ }
 }
 
+async function syncEsrganJobToProject(job) {
+  if (job.status !== 'done' || !job.result?.outputPath) return;
+  const { projectId, segmentIndex } = job.params ?? {};
+  if (projectId == null || segmentIndex == null) return;
+  try {
+    const { access } = await import('fs/promises');
+    try { await access(job.result.outputPath); } catch {
+      console.warn(`[server] syncEsrganJobToProject: output file missing, skipping`);
+      return;
+    }
+    await withProjectLock(projectId, async () => {
+      const project  = await loadProject(projectId);
+      const seg      = project.segments[segmentIndex];
+      if (!seg) return;
+      if (!project.generatedAssets) project.generatedAssets = [];
+      const filename = job.result.outputPath.split('/').pop();
+      if (project.generatedAssets.some(a => a.filename === filename)) return;
+      project.generatedAssets.push({
+        id:           `ga-${randomUUID().slice(0, 8)}`,
+        filename,
+        segId:        seg.id,
+        segmentIndex,
+        version:      0,
+        is2x:         true,
+        createdAt:    new Date().toISOString(),
+      });
+      await saveProject(project);
+      console.log(`[server] synced 2x asset ${filename} → segment ${segmentIndex}`);
+    });
+  } catch { /* project may have been deleted */ }
+}
+
 app.listen(PORT, async () => {
   console.log(`Motion Studio → http://localhost:${PORT}`);
 
@@ -1184,6 +1223,7 @@ app.listen(PORT, async () => {
   subscribeAll(async updated => {
     if (updated.status !== 'done') return;
     if (updated.params?.jobType === 'qwen-edit') await syncQwenJobToProject(updated).catch(() => {});
+    else if (updated.params?.jobType === 'esrgan-2x') await syncEsrganJobToProject(updated).catch(() => {});
     else await syncJobToProject(updated).catch(() => {});
   });
 
@@ -1196,6 +1236,7 @@ app.listen(PORT, async () => {
       const jobs = await getAllDoneJobs();
       for (const job of jobs) {
         if (job.params?.jobType === 'qwen-edit') await syncQwenJobToProject(job);
+        else if (job.params?.jobType === 'esrgan-2x') await syncEsrganJobToProject(job);
         else await syncJobToProject(job);
       }
     } catch {}

@@ -1213,14 +1213,27 @@ function renderProjJobsDefault() {
   const bySegAsc  = (a, b) => (a.params?.segmentIndex ?? 0) - (b.params?.segmentIndex ?? 0);
   const byNewest  = (a, b) => new Date(b.queuedAt ?? 0) - new Date(a.queuedAt ?? 0);
 
-  const renderJobs  = projJobs.filter(j => j.params?.jobType === 'rife-2x').sort(byNewest);
-  const segJobs     = projJobs.filter(j => j.params?.jobType !== 'rife-2x');
-  const activeSegs  = segJobs.filter(j =>  _ACTIVE_STATUSES.has(j.status)).sort(bySegAsc);
-  const doneSegs    = segJobs.filter(j => !_ACTIVE_STATUSES.has(j.status)).sort(bySegAsc);
+  const _RENDER_TYPES = new Set(['rife-2x', 'auto-render']);
+  const renderJobs  = projJobs.filter(j => _RENDER_TYPES.has(j.params?.jobType)).sort(byNewest);
+  const segJobs     = projJobs.filter(j => !_RENDER_TYPES.has(j.params?.jobType));
+
+  // Within a segment: gen job first, then esrgan-2x, then rife-segment
+  const _segTypeOrder = t => t === 'esrgan-2x' ? 1 : t === 'rife-segment' ? 2 : 0;
+  const bySegAndType  = (a, b) => {
+    const sd = (a.params?.segmentIndex ?? 0) - (b.params?.segmentIndex ?? 0);
+    return sd !== 0 ? sd : _segTypeOrder(a.params?.jobType) - _segTypeOrder(b.params?.jobType);
+  };
+
+  const activeSegs  = segJobs.filter(j =>  _ACTIVE_STATUSES.has(j.status)).sort(bySegAndType);
+  const doneSegs    = segJobs.filter(j => !_ACTIVE_STATUSES.has(j.status)).sort(bySegAndType);
 
   const renderItem = job => {
-    const isRife2x = job.params?.jobType === 'rife-2x';
-    const active   = job.id === activeJobId ? ' active' : '';
+    const jobType      = job.params?.jobType;
+    const isRife2x     = jobType === 'rife-2x';
+    const isAutoRender = jobType === 'auto-render';
+    const isEsrgan     = jobType === 'esrgan-2x';
+    const isRifeSeg    = jobType === 'rife-segment';
+    const active       = job.id === activeJobId ? ' active' : '';
     let label, extra = '';
     if (isRife2x) {
       label = '2x FPS Render';
@@ -1229,11 +1242,14 @@ function renderProjJobsDefault() {
         const file = job.result.outputPath.split('/').pop();
         extra = `<a class="proj-job-download" href="/media/${pid}/generated/${encodeURIComponent(file)}" download="${escHtml(file)}" onclick="event.stopPropagation()">↓ Download</a>`;
       }
+    } else if (isAutoRender) {
+      label = 'Auto Render';
     } else {
       const idx   = job.params?.segmentIndex ?? 0;
       const times = segTimes[idx];
       const range = times ? ` | ${times.start.toFixed(1)}s – ${times.end.toFixed(1)}s` : '';
-      label = `Segment ${idx + 1}${range}`;
+      const suffix = isEsrgan ? ' 2x' : isRifeSeg ? ' 2x FPS' : '';
+      label = `Segment ${idx + 1}${suffix}${range}`;
     }
     const isRunning = job.status === 'running';
     const progressSpan = isRunning

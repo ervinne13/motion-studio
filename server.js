@@ -122,7 +122,7 @@ app.patch('/api/project/:id', async (req, res) => {
   try {
     const project = await withProjectLock(id, async () => {
       const project = await loadProject(id);
-      const allowed = ['name', 'mode', 'fps', 'aspectRatio', 'defaultPrompt', 'defaultSeed', 'genFps', 'genFramesPerSegment', 'useSourceFps', 'archived'];
+      const allowed = ['name', 'mode', 'fps', 'aspectRatio', 'defaultPrompt', 'defaultSeed', 'genFps', 'genFramesPerSegment', 'useSourceFps', 'archived', 'megapixels', 'retryOnFailure'];
       allowed.forEach(k => { if (req.body[k] !== undefined) project[k] = req.body[k]; });
 
       if (req.body.genFps !== undefined || req.body.genFramesPerSegment !== undefined || req.body.useSourceFps !== undefined) {
@@ -576,7 +576,7 @@ app.post('/api/project/:id/segments/:segId/duplicate', async (req, res) => {
 // Returns { jobs: [...] } — one job per segment, chained via dependsOn
 app.post('/api/project/:id/generate', async (req, res) => {
   const { id } = req.params;
-  const { clipId, prompt = '', seed, segIds } = req.body;
+  const { clipId, prompt = '', seed, segIds, megapixels, retryOnFailure } = req.body;
 
   try {
     const project = await loadProject(id);
@@ -593,8 +593,10 @@ app.post('/api/project/:id/generate', async (req, res) => {
     const outputDir = join(projectDir(id), 'generated');
     await mkdir(outputDir, { recursive: true });
 
-    const resolvedSeed   = seed ?? (project.defaultSeed > 0 ? project.defaultSeed : Math.floor(Math.random() * 2 ** 32));
-    const resolvedPrompt = prompt || project.defaultPrompt || '';
+    const resolvedSeed       = seed ?? (project.defaultSeed > 0 ? project.defaultSeed : Math.floor(Math.random() * 2 ** 32));
+    const resolvedPrompt     = prompt || project.defaultPrompt || '';
+    const resolvedMegapixels    = megapixels ?? project.megapixels ?? 0.5;
+    const resolvedRetryOnFailure = retryOnFailure ?? project.retryOnFailure ?? false;
     const genFps         = project.useSourceFps ? (clip.fps || 24) : (project.genFps || 24);
 
     // Project segments are the canonical segmentation — one job per selected segment
@@ -646,6 +648,8 @@ app.post('/api/project/:id/generate', async (req, res) => {
         prompt:                 resolvedPrompt,
         seed:                   resolvedSeed,
         mode:                   project.mode || 'subject-replacement',
+        megapixels:             resolvedMegapixels,
+        retryOnFailure:         resolvedRetryOnFailure,
         outputPath,
         jobPrefix:              `motion-studio/${batchId}_seg${segmentIndex + 1}`,
         clipFps:                clip.fps,

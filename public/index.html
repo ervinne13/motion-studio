@@ -174,6 +174,18 @@
               <small class="field-hint-text" id="seg-duration-hint">81 frames ÷ 24fps = ~3.4s per segment</small>
             </div>
             <div class="field-group">
+              <label for="gen-resolution">Resolution</label>
+              <select class="form-control" id="gen-resolution">
+                <option value="0.25">0.25 MP — Test (~4min)</option>
+                <option value="0.5" selected>0.5 MP — Standard (~10min)</option>
+                <option value="1.0">1.0 MP — Crisp (~26min)</option>
+              </select>
+            </div>
+            <div class="field-group" style="flex-direction:row;align-items:center;gap:8px">
+              <input type="checkbox" id="retry-on-failure">
+              <label for="retry-on-failure" style="margin:0;cursor:pointer">Retry on failure</label>
+            </div>
+            <div class="field-group">
               <label for="default-prompt">Default Prompt</label>
               <textarea class="form-control" id="default-prompt" rows="3"
                 placeholder="Fallback prompt for all segments…"></textarea>
@@ -413,6 +425,19 @@
         <div class="field-group">
           <label for="gen-modal-prompt" style="font-size:12px;font-weight:600;color:var(--sl-color-neutral-700)">Prompt</label>
           <textarea class="form-control" id="gen-modal-prompt" rows="3" placeholder="Describe the generation for this batch…"></textarea>
+        </div>
+        <div class="field-group" style="flex-direction:row;align-items:center;gap:8px">
+          <input type="checkbox" id="gen-modal-retry" checked>
+          <label for="gen-modal-retry" style="margin:0;cursor:pointer;font-size:12px;font-weight:600;color:var(--sl-color-neutral-700)">Retry on failure</label>
+        </div>
+        <div class="field-group">
+          <label for="gen-modal-resolution" style="font-size:12px;font-weight:600;color:var(--sl-color-neutral-700)">Resolution</label>
+          <select class="form-control" id="gen-modal-resolution">
+            <option value="0.25">0.25 MP — Test</option>
+            <option value="0.5" selected>0.5 MP — Standard (~640p)</option>
+            <option value="1.0">1.0 MP — Crisp</option>
+            <option value="1.5">1.5 MP — High (~720p, risks OOM)</option>
+          </select>
         </div>
       </div>
       <div class="modal-actions">

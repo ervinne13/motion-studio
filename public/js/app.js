@@ -83,6 +83,10 @@ function applyProject() {
   if (dpEl) dpEl.value = p.defaultPrompt ?? '';
   const dsEl = document.getElementById('default-seed');
   if (dsEl) dsEl.value = String(p.defaultSeed ?? -1);
+  const resEl = document.getElementById('gen-resolution');
+  if (resEl) resEl.value = String(p.megapixels ?? '0.5');
+  const retryEl = document.getElementById('retry-on-failure');
+  if (retryEl) retryEl.checked = !!p.retryOnFailure;
   // Reset flag after Shoelace finishes processing any queued microtasks
   setTimeout(() => { _applyingProject = false; }, 100);
   updateSegDurationHint(p);
@@ -483,6 +487,8 @@ document.getElementById('btn-generate').addEventListener('click', () => {
   document.getElementById('gen-modal-name').value   = p.name || 'untitled';
   document.getElementById('gen-modal-mode').value   = p.mode || 'subject-replacement';
   document.getElementById('gen-modal-prompt').value = p.defaultPrompt || '';
+  document.getElementById('gen-modal-resolution').value = String(p.megapixels ?? '0.5');
+  document.getElementById('gen-modal-retry').checked = p.retryOnFailure ?? true;
   document.getElementById('gen-modal-count').textContent = n;
   document.getElementById('generate-modal').hidden  = false;
   document.getElementById('gen-modal-prompt').focus();
@@ -504,9 +510,11 @@ document.getElementById('btn-gen-modal-confirm').addEventListener('click', async
   const clip = p.sourceClips.find(c => c.id === clipId) ?? p.sourceClips[0];
   if (!clip) return;
 
-  const name   = document.getElementById('gen-modal-name').value.trim() || 'untitled';
-  const mode   = document.getElementById('gen-modal-mode').value;
-  const prompt = document.getElementById('gen-modal-prompt').value.trim();
+  const name       = document.getElementById('gen-modal-name').value.trim() || 'untitled';
+  const mode       = document.getElementById('gen-modal-mode').value;
+  const prompt     = document.getElementById('gen-modal-prompt').value.trim();
+  const resolution    = document.getElementById('gen-modal-resolution').value;
+  const retryOnFail   = document.getElementById('gen-modal-retry').checked;
 
   document.getElementById('generate-modal').hidden = true;
 
@@ -536,6 +544,8 @@ document.getElementById('btn-gen-modal-confirm').addEventListener('click', async
       body: JSON.stringify({
         clipId: clip.id,
         prompt: prompt || undefined,
+        megapixels: resolution,
+        retryOnFailure: retryOnFail,
         segIds: p.segments.filter(s => s.selected).map(s => s.id),
       }),
     });
@@ -1360,6 +1370,28 @@ document.getElementById('gen-frames-per-segment')?.addEventListener('change', as
   updateSegDurationHint(project);
   timelineSetProject(project);
   updateGenerateButton();
+});
+
+document.getElementById('gen-resolution')?.addEventListener('change', async e => {
+  if (_applyingProject) return;
+  const p = state.project;
+  if (!p) return;
+  await fetch(`/api/project/${p.id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ megapixels: e.target.value }),
+  });
+});
+
+document.getElementById('retry-on-failure')?.addEventListener('change', async e => {
+  if (_applyingProject) return;
+  const p = state.project;
+  if (!p) return;
+  await fetch(`/api/project/${p.id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ retryOnFailure: e.target.checked }),
+  });
 });
 
 document.getElementById('project-name')?.addEventListener('change', async e => {

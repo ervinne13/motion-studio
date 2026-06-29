@@ -708,11 +708,14 @@ function renderJob(job) {
   }
 
   const isQwen       = job.params?.jobType === 'qwen-edit';
-  const isRife2x     = job.params?.jobType === 'rife-2x';
-  const isEsrgan     = job.params?.jobType === 'esrgan-2x';
-  const isAutoRender = job.params?.jobType === 'auto-render';
+  const isRife2x       = job.params?.jobType === 'rife-2x';
+  const isRifeSegment  = job.params?.jobType === 'rife-segment';
+  const isEsrgan       = job.params?.jobType === 'esrgan-2x';
+  const isAutoRender   = job.params?.jobType === 'auto-render';
   const jobLabel = isRife2x
     ? '2x FPS'
+    : isRifeSegment
+    ? `Seg ${(job.params?.segmentIndex ?? 0) + 1} 2x FPS`
     : isAutoRender
     ? 'Auto Render'
     : isEsrgan

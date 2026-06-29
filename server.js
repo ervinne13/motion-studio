@@ -668,6 +668,8 @@ app.post('/api/project/:id/generate', async (req, res) => {
         if (updated.status === 'done') await syncJobToProject(updated).catch(() => {});
       });
 
+      let segLastJobId = job.id;
+
       if (use2xUpscale) {
         const upscaledPath = outputPath.replace(/\.mp4$/i, '_2x.mp4');
         const esrganJob = await enqueue({
@@ -678,10 +680,30 @@ app.post('/api/project/:id/generate', async (req, res) => {
           inputPath:    outputPath,
           outputPath:   upscaledPath,
           retryOnFailure: resolvedRetryOnFailure,
-        }, job.id);
-        lastJobId = esrganJob.id;
+        }, segLastJobId);
+        segLastJobId = esrganJob.id;
         jobs.push(esrganJob);
       }
+
+      if (use2xFps) {
+        const rifeInputPath  = use2xUpscale
+          ? outputPath.replace(/\.mp4$/i, '_2x.mp4')
+          : outputPath;
+        const rifeOutputPath = rifeInputPath.replace(/\.mp4$/i, '_rife.mp4');
+        const rifeJob = await enqueue({
+          jobType:      'rife-segment',
+          projectId:    id,
+          projectName:  project.name,
+          segmentIndex,
+          inputPath:    rifeInputPath,
+          outputPath:   rifeOutputPath,
+          retryOnFailure: resolvedRetryOnFailure,
+        }, segLastJobId);
+        segLastJobId = rifeJob.id;
+        jobs.push(rifeJob);
+      }
+
+      lastJobId = segLastJobId;
     }
 
     if (autoRenderOnFinish && lastJobId) {

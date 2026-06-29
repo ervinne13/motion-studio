@@ -705,10 +705,16 @@ function renderJob(job) {
     card.addEventListener('click', () => showJobInPanel(job.id));
   }
 
-  const isQwen   = job.params?.jobType === 'qwen-edit';
-  const isRife2x = job.params?.jobType === 'rife-2x';
+  const isQwen       = job.params?.jobType === 'qwen-edit';
+  const isRife2x     = job.params?.jobType === 'rife-2x';
+  const isEsrgan     = job.params?.jobType === 'esrgan-2x';
+  const isAutoRender = job.params?.jobType === 'auto-render';
   const jobLabel = isRife2x
     ? '2x FPS'
+    : isAutoRender
+    ? 'Auto Render'
+    : isEsrgan
+    ? `Seg ${(job.params?.segmentIndex ?? 0) + 1} 2x`
     : isQwen
     ? `Frame ${job.params?.frameIndex ?? '?'}${job.params?.nsfw ? ' (NSFW)' : ''}`
     : `Seg ${(job.params?.segmentIndex ?? 0) + 1}`;

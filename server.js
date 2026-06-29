@@ -670,11 +670,12 @@ app.post('/api/project/:id/generate', async (req, res) => {
       if (use2xUpscale) {
         const upscaledPath = outputPath.replace(/\.mp4$/i, '_2x.mp4');
         const esrganJob = await enqueue({
-          jobType:     'esrgan-2x',
-          projectId:   id,
-          projectName: project.name,
-          inputPath:   outputPath,
-          outputPath:  upscaledPath,
+          jobType:      'esrgan-2x',
+          projectId:    id,
+          projectName:  project.name,
+          segmentIndex,
+          inputPath:    outputPath,
+          outputPath:   upscaledPath,
           retryOnFailure: resolvedRetryOnFailure,
         }, job.id);
         lastJobId = esrganJob.id;
@@ -824,17 +825,19 @@ app.post('/api/project/:id/upscale-segments', async (req, res) => {
     const done     = project.segments.filter(s => s.generatedVideo);
     const jobs     = [];
 
-    for (const seg of done) {
+    for (let si = 0; si < done.length; si++) {
+      const seg          = done[si];
       const origPath     = join(genDir, seg.generatedVideo);
       const upscaledPath = origPath.replace(/\.mp4$/i, '_2x.mp4');
       const alreadyDone  = await stat(upscaledPath).then(() => true).catch(() => false);
       if (alreadyDone) continue;
       const job = await enqueue({
-        jobType:     'esrgan-2x',
-        projectId:   id,
-        projectName: project.name,
-        inputPath:   origPath,
-        outputPath:  upscaledPath,
+        jobType:      'esrgan-2x',
+        projectId:    id,
+        projectName:  project.name,
+        segmentIndex: project.segments.indexOf(seg),
+        inputPath:    origPath,
+        outputPath:   upscaledPath,
         retryOnFailure: project.retryOnFailure ?? false,
       });
       jobs.push(job);

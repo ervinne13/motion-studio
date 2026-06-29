@@ -1553,6 +1553,14 @@ html, body {
 .pause-all-btn:hover { background: var(--sl-color-neutral-100); border-color: var(--sl-color-neutral-400); }
 .pause-all-btn.paused { border-color: #7c3aed; color: #7c3aed; background: #f5f3ff; }
 
+/* ── Logs panel actions bar ──────────────────────────────────── */
+#logs-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 4px;
+}
+
 /* ── Project jobs default panel ──────────────────────────────── */
 #proj-jobs-panel { display: flex; flex-direction: column; overflow: hidden; }
 #proj-jobs-actions { padding: 8px 12px; border-bottom: 1px solid var(--sl-color-neutral-200); flex-shrink: 0; display: flex; align-items: center; gap: 10px; }

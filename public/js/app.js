@@ -1261,6 +1261,11 @@ function renderProjJobsDefault() {
       }
     } else if (isAutoRender) {
       label = 'Auto Render';
+      if (job.status === 'done' && job.result?.outputPath) {
+        const pid  = job.params?.projectId;
+        const file = job.result.outputPath.split('/').pop();
+        extra = `<a class="proj-job-download" href="/media/${pid}/generated/${encodeURIComponent(file)}" download="${escHtml(file)}" onclick="event.stopPropagation()">↓ Download</a>`;
+      }
     } else {
       const idx   = job.params?.segmentIndex ?? 0;
       const times = segTimes[idx];
@@ -2069,6 +2074,7 @@ function mobApply() {
 
     const renderJobRow = job => {
       const status  = job.status;
+      const t       = job.params?.jobType;
       const badge   = badgeClass[status] ? `<span class="mob-badge ${badgeClass[status]}">${badgeLabel[status] ?? status}</span>` : '';
       let elapsed = '';
       if (job.startedAt && job.completedAt) {
@@ -2078,9 +2084,15 @@ function mobApply() {
       } else if (status === 'running' && job.startedAt) {
         elapsed = `<span class="mob-elapsed" data-started-at="${job.startedAt}"></span>`;
       }
+      let download = '';
+      if (status === 'done' && job.result?.outputPath && (t === 'auto-render' || t === 'rife-2x')) {
+        const pid  = job.params?.projectId;
+        const file = job.result.outputPath.split('/').pop();
+        download = `<a class="mob-job-download" href="/media/${pid}/generated/${encodeURIComponent(file)}" download="${escHtml(file)}">↓</a>`;
+      }
       return `<div class="mob-job-row">
         <span class="mob-job-row-label">${escHtml(mobJobLabel(job))}</span>
-        ${elapsed}${badge}
+        ${elapsed}${badge}${download}
       </div>`;
     };
 

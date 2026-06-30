@@ -14,7 +14,7 @@ import {
   createProject, loadProject, saveProject, withProjectLock,
   computeSegments, uploadsDir, thumbsDir, projectDir,
 } from './lib/project.js';
-import { enqueue, getJob, getTodayJobs, getAllDoneJobs, subscribeJob, subscribeAll, cancelJob, cancelAllPending, forceRelease, resumeOnStartup, pauseAllJobs, resumeAllJobs, isQueuePaused } from './lib/queue.js';
+import { enqueue, getJob, getTodayJobs, getAllDoneJobs, getJobsForProject, subscribeJob, subscribeAll, cancelJob, cancelAllPending, forceRelease, resumeOnStartup, pauseAllJobs, resumeAllJobs, isQueuePaused } from './lib/queue.js';
 import { generateQwenEdit } from './lib/generate.js';
 import { uploadVideo as comfyUploadVideo } from './lib/comfyui.js';
 
@@ -364,6 +364,14 @@ app.post('/api/project/:id/resync', async (req, res) => {
     }
     const project = await loadProject(req.params.id);
     res.json({ synced, project });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/project/:id/jobs — all jobs for this project across all log files
+app.get('/api/project/:id/jobs', async (req, res) => {
+  try {
+    const jobs = await getJobsForProject(req.params.id);
+    res.json({ jobs });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

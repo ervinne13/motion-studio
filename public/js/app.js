@@ -102,6 +102,18 @@ function applyProject() {
   _syncProjElapsedTimer();
   mobApply();
   _mobLoadLatestRender();
+  _fetchProjJobsHistory(p.id);
+}
+
+async function _fetchProjJobsHistory(projectId) {
+  try {
+    const res  = await fetch(`/api/project/${projectId}/jobs`);
+    if (!res.ok) return;
+    const { jobs } = await res.json();
+    const map = new Map(jobs.map(j => [j.id, j]));
+    _projJobsHistory.set(projectId, map);
+    renderProjJobsDefault();
+  } catch {}
 }
 
 function updateSegDurationHint(p) {
@@ -591,7 +603,8 @@ function showToast(message, type = 'info', duration = 4000) {
 }
 
 // ── Job log panel ──────────────────────────────────────────────
-const _jobs = new Map(); // jobId → job object
+const _jobs = new Map(); // jobId → job object (live SSE state)
+const _projJobsHistory = new Map(); // projectId → Map<jobId, job> (fetched from server)
 let _sortAsc = localStorage.getItem('logsSortAsc') !== 'false';
 
 // Track in-flight Qwen jobs so the global SSE can handle their completion
@@ -1188,8 +1201,12 @@ function renderProjJobsDefault() {
   const p = state.project;
   if (!p) { listEl.innerHTML = '<div class="proj-jobs-empty">No project loaded</div>'; return; }
 
-  const projJobs = [..._jobs.values()]
-    .filter(j => j.params?.projectId === p.id && j.params?.jobType !== 'qwen-edit');
+  // Merge historical (fetched from server) with live SSE jobs; live wins on conflict
+  const histMap  = _projJobsHistory.get(p.id) ?? new Map();
+  const merged   = new Map(histMap);
+  for (const [id, job] of _jobs) if (job.params?.projectId === p.id) merged.set(id, job);
+  const projJobs = [...merged.values()]
+    .filter(j => j.params?.jobType !== 'qwen-edit');
 
   if (!projJobs.length) {
     listEl.innerHTML = '<div class="proj-jobs-empty">No generation runs for this project</div>';

@@ -419,7 +419,7 @@ app.delete('/api/project/:id/segments', async (req, res) => {
     const project = await withProjectLock(id, async () => {
       const project = await loadProject(id);
       project.segments = [];
-      project.sourceClips = [];
+      project.sourceClips = project.sourceClips.map(c => ({ ...c, segmentCount: 0 }));
       await saveProject(project);
       return project;
     });

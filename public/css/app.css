@@ -1698,6 +1698,15 @@ html, body {
 .mob-badge-paused  { background: #f5f3ff; color: #7c3aed; }
 @keyframes mob-pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
 
+/* Mobile flat job list */
+.mob-job-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px; border-bottom: 1px solid #e2e8f0;
+  font-size: 13px;
+}
+.mob-job-row-label { flex: 1; font-weight: 500; color: #1e293b; }
+.mob-job-elapsed   { font-size: 11px; color: #94a3b8; white-space: nowrap; }
+
 /* Segment body */
 .mob-seg-video { width: 100%; display: block; }
 .mob-seg-pulse {

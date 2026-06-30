@@ -2028,9 +2028,11 @@ function mobApply() {
 
   nameEl.textContent = p.name || 'untitled';
 
-  const projJobs = [..._jobs.values()].filter(j =>
-    j.params?.projectId === p.id && j.params?.jobType !== 'qwen-edit'
-  );
+  // Merge historical + live jobs; live wins on conflict
+  const histMap  = _projJobsHistory.get(p.id) ?? new Map();
+  const merged   = new Map(histMap);
+  for (const [id, job] of _jobs) if (job.params?.projectId === p.id) merged.set(id, job);
+  const projJobs = [...merged.values()].filter(j => j.params?.jobType !== 'qwen-edit');
 
   const latestAsset = new Map();
   (p.generatedAssets ?? []).forEach(a => {
@@ -2038,65 +2040,52 @@ function mobApply() {
     if (!cur || a.version > cur.version) latestAsset.set(a.segmentIndex, a);
   });
 
-  const allSegIndices = [...new Set([
-    ...projJobs.map(j => j.params?.segmentIndex ?? 0),
-    ...latestAsset.keys(),
-    ...(p.segments?.map((_, i) => i) ?? []),
-  ])].sort((a, b) => a - b);
+  const badgeClass = { done:'mob-badge-done', running:'mob-badge-running', waiting:'mob-badge-waiting', pending:'mob-badge-pending', failed:'mob-badge-failed', cancelled:'mob-badge-failed', paused:'mob-badge-paused' };
+  const badgeLabel = { done:'Done', running:'Running', waiting:'Waiting', pending:'Pending', failed:'Failed', cancelled:'Cancelled', paused:'Paused' };
 
-  // Preserve open accordion state across re-renders
-  const openSet = new Set(
-    [...bodyEl.querySelectorAll('.mob-acc-item.open')].map(el => el.dataset.segIdx)
-  );
-
-  const badgeClass = { done:'mob-badge-done', running:'mob-badge-running', waiting:'mob-badge-waiting', pending:'mob-badge-pending', failed:'mob-badge-failed', paused:'mob-badge-paused' };
-  const badgeLabel = { done:'Done', running:'Running', waiting:'Waiting', pending:'Pending', failed:'Failed', paused:'Paused' };
-
-  if (allSegIndices.length === 0) {
+  if (!projJobs.length && latestAsset.size === 0) {
     bodyEl.innerHTML = '<div class="mob-empty">No segments yet. Upload a source clip first.</div>';
   } else {
-    bodyEl.innerHTML = allSegIndices.map(segIdx => {
-      const asset  = latestAsset.get(segIdx);
-      const job    = [...projJobs].reverse().find(j => (j.params?.segmentIndex ?? 0) === segIdx);
-      const status = job?.status ?? (asset ? 'done' : 'unknown');
-      const badge  = badgeClass[status]
-        ? `<span class="mob-badge ${badgeClass[status]}">${badgeLabel[status]}</span>` : '';
-      const isOpen = openSet.has(String(segIdx));
-      const body   = isOpen ? _mobBuildSegBody(p.id, segIdx, asset, job) : '';
-      return `
-        <div class="mob-acc-item${isOpen ? ' open' : ''}" data-seg-idx="${segIdx}">
-          <button class="mob-acc-header" type="button">
-            <span class="mob-acc-title">Segment ${segIdx + 1}</span>
-            ${badge}
-            <span class="mob-acc-chevron">›</span>
-          </button>
-          <div class="mob-acc-body">${body}</div>
-        </div>`;
-    }).join('');
+    const _RENDER_JOB_TYPES = new Set(['rife-2x', 'auto-render']);
+    const _segTypeOrder = t => t === 'esrgan-2x' ? 1 : t === 'rife-segment' ? 2 : 0;
+    const renderJobs = projJobs.filter(j =>  _RENDER_JOB_TYPES.has(j.params?.jobType))
+                                .sort((a, b) => new Date(a.queuedAt ?? 0) - new Date(b.queuedAt ?? 0));
+    const segJobs    = projJobs.filter(j => !_RENDER_JOB_TYPES.has(j.params?.jobType))
+                                .sort((a, b) => {
+                                  const sd = (a.params?.segmentIndex ?? 0) - (b.params?.segmentIndex ?? 0);
+                                  return sd !== 0 ? sd : _segTypeOrder(a.params?.jobType) - _segTypeOrder(b.params?.jobType);
+                                });
 
-    // Initialize src for any videos in preserved-open items
-    bodyEl.querySelectorAll('.mob-acc-item.open video[data-src]').forEach(vid => {
-      if (!vid.src) vid.src = vid.dataset.src;
-    });
+    const mobJobLabel = job => {
+      const t   = job.params?.jobType;
+      const idx = job.params?.segmentIndex ?? 0;
+      const n   = idx + 1;
+      if (t === 'rife-2x')     return '2x FPS Render';
+      if (t === 'auto-render') return 'Auto Render';
+      if (t === 'esrgan-2x')   return `S${n} 2x`;
+      if (t === 'rife-segment') return `S${n} 2x FPS`;
+      return `S${n}`;
+    };
 
-    bodyEl.querySelectorAll('.mob-acc-item').forEach(item => {
-      item.querySelector('.mob-acc-header').addEventListener('click', () => {
-        const wasOpen = item.classList.contains('open');
-        bodyEl.querySelectorAll('.mob-acc-item.open').forEach(other => {
-          other.classList.remove('open');
-          other.querySelector('video')?.pause();
-        });
-        if (!wasOpen) {
-          item.classList.add('open');
-          const segIdx = parseInt(item.dataset.segIdx, 10);
-          const asset  = latestAsset.get(segIdx);
-          const job    = [...projJobs].reverse().find(j => (j.params?.segmentIndex ?? 0) === segIdx);
-          item.querySelector('.mob-acc-body').innerHTML = _mobBuildSegBody(p.id, segIdx, asset, job);
-          const vid = item.querySelector('video');
-          if (vid && !vid.src && vid.dataset.src) vid.src = vid.dataset.src;
-        }
-      });
-    });
+    const renderJobRow = job => {
+      const status  = job.status;
+      const badge   = badgeClass[status] ? `<span class="mob-badge ${badgeClass[status]}">${badgeLabel[status] ?? status}</span>` : '';
+      let elapsed = '';
+      if (job.startedAt && job.completedAt) {
+        const secs = Math.round((new Date(job.completedAt) - new Date(job.startedAt)) / 1000);
+        const m = Math.floor(secs / 60), s = secs % 60;
+        elapsed = `<span class="mob-job-elapsed">${m > 0 ? `${m}m ` : ''}${s}s</span>`;
+      } else if (status === 'running' && job.startedAt) {
+        elapsed = `<span class="mob-elapsed" data-started-at="${job.startedAt}"></span>`;
+      }
+      return `<div class="mob-job-row">
+        <span class="mob-job-row-label">${escHtml(mobJobLabel(job))}</span>
+        ${elapsed}${badge}
+      </div>`;
+    };
+
+    bodyEl.innerHTML = [...segJobs, ...renderJobs].map(renderJobRow).join('') ||
+      '<div class="mob-empty">No generation runs yet.</div>';
   }
 
   const hasUngenerated = (p.segments ?? []).some(s => !s.generatedVideo);

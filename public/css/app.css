@@ -1577,6 +1577,7 @@ html, body {
 .proj-job-item.active { background: var(--sl-color-primary-50); }
 .proj-job-label { color: var(--sl-color-neutral-700); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 .proj-job-progress { color: var(--sl-color-neutral-500); font-size: 11px; white-space: nowrap; flex-shrink: 0; }
+.proj-job-elapsed  { color: var(--sl-color-neutral-400); font-size: 11px; white-space: nowrap; flex-shrink: 0; }
 .proj-jobs-empty { padding: 24px 14px; font-size: 12px; color: var(--sl-color-neutral-400); text-align: center; }
 .jobs-section-hr { border: none; border-top: 1px solid var(--sl-color-neutral-200); margin: 4px 0; }
 .proj-job-download { color: var(--sl-color-primary-600); text-decoration: none; font-size: 11px; white-space: nowrap; flex-shrink: 0; }

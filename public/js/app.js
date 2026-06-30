@@ -1272,9 +1272,15 @@ function renderProjJobsDefault() {
     const progressSpan = isRunning
       ? `<span class="proj-job-progress" data-started-at="${job.startedAt ?? ''}" data-frame-count="${job.params?.frameCount ?? 81}" data-job-type="${job.params?.jobType ?? ''}">${_projJobProgress(job)}</span>`
       : '';
+    let elapsed = '';
+    if (job.startedAt && job.completedAt) {
+      const secs = Math.round((new Date(job.completedAt) - new Date(job.startedAt)) / 1000);
+      const m = Math.floor(secs / 60), s = secs % 60;
+      elapsed = `<span class="proj-job-elapsed">${m > 0 ? `${m}m ` : ''}${s}s</span>`;
+    }
     return `<div class="proj-job-item${active}" data-job-id="${job.id}">
       <span class="proj-job-label">${escHtml(label)}</span>
-      ${progressSpan}<span class="job-badge job-badge-${job.status}">${job.status}</span>
+      ${progressSpan}${elapsed}<span class="job-badge job-badge-${job.status}">${job.status}</span>
       ${extra}
     </div>`;
   };
